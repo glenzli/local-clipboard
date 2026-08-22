@@ -1,0 +1,12 @@
+[Unit]
+Description=LAN clipboard sync client
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=__BIN__ run -server __SERVER__ -token __TOKEN__ -name __NAME__
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
