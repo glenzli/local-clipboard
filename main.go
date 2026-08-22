@@ -72,6 +72,9 @@ func defaultName() string {
 }
 
 func serve(addr, token string) {
+	if token == "" {
+		token = os.Getenv("LOCALCLIP_TOKEN")
+	}
 	mux := http.NewServeMux()
 	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	hub.New(token).Routes(mux)

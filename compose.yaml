@@ -1,0 +1,16 @@
+services:
+  hub:
+    build: .
+    image: local-clipboard:latest
+    container_name: local-clipboard
+    restart: unless-stopped
+    ports:
+      - "9100:9100"
+    environment:
+      - LOCALCLIP_TOKEN=${LOCALCLIP_TOKEN:?put LOCALCLIP_TOKEN=xxx in .env}
+    command: ["serve", "-addr", ":9100"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- \"http://127.0.0.1:9100/?token=$$LOCALCLIP_TOKEN\" >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
