@@ -1,11 +1,15 @@
 #!/bin/bash
 set -e
-if [ $# -lt 2 ]; then
-  echo "usage: ./install.sh <nas:9100> <token> [name]"
+if [ $# -lt 1 ]; then
+  echo "usage: ./install.sh <nas:9100> [token] [name]"
   echo "place local-clipboard-linux-amd64 next to this script first"
   exit 1
 fi
-SERVER=$1; TOKEN=$2; NAME=${3:-$(hostname -s)}
+SERVER=$1; TOKEN=$2; NAME=$3
+if [ -z "$TOKEN" ]; then
+  printf "hub token: "; read -r TOKEN
+fi
+if [ -z "$NAME" ]; then NAME=$(hostname -s); fi
 BIN="$HOME/.local/bin/local-clipboard"
 mkdir -p "$(dirname "$BIN")"
 cp "$(dirname "$0")/local-clipboard-linux-amd64" "$BIN"

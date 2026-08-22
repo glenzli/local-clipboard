@@ -1,9 +1,10 @@
 param(
   [Parameter(Mandatory=$true)][string]$Server,
-  [Parameter(Mandatory=$true)][string]$Token,
+  [string]$Token,
   [string]$Name = $env:COMPUTERNAME
 )
 $ErrorActionPreference = "Stop"
+if (-not $Token) { $Token = Read-Host "hub token" }
 $dir = "$env:LOCALAPPDATA\local-clipboard"
 $bin = "$dir\local-clipboard.exe"
 New-Item -ItemType Directory -Force -Path $dir | Out-Null
