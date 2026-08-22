@@ -8,4 +8,7 @@ services:
       - "9100:9100"
     environment:
       - LOCALCLIP_TOKEN=${LOCALCLIP_TOKEN:?put LOCALCLIP_TOKEN=xxx in .env}
+      - LOCALCLIP_STORE=/data
+    volumes:
+      - ./data:/data
     command: ["serve", "-addr", ":9100"]
