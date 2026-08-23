@@ -1,10 +1,11 @@
 param(
-  [Parameter(Mandatory=$true)][string]$Server,
-  [string]$Token,
+  [string]$Server = $env:LOCALCLIP_SERVER,
+  [string]$Token = $env:LOCALCLIP_TOKEN,
   [string]$Name = $env:COMPUTERNAME
 )
 $ErrorActionPreference = "Stop"
 if (-not $Token) { $Token = Read-Host "hub token" }
+if (-not $Server) { Write-Host "set LOCALCLIP_SERVER env or pass -Server"; exit 1 }
 $dir = "$env:LOCALAPPDATA\local-clipboard"
 $bin = "$dir\local-clipboard.exe"
 New-Item -ItemType Directory -Force -Path $dir | Out-Null
