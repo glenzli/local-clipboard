@@ -77,13 +77,13 @@ Without `-server` they route through the local daemon (progress shows in the UI)
 
 ## Hotkeys (bind send-clipboard to a combo that's free on your OS)
 
-Recommended combos: `Ctrl+Option+Space` (macOS), `Ctrl+Alt+C` (Windows/Linux).
+Recommended combo everywhere: `Ctrl+Alt+C` (macOS maps Option to Alt, same muscle memory).
 
 **macOS — skhd**
 
 ```bash
 brew install koekeishiya/formulae/skhd
-echo "ctrl + alt - space : $HOME/.local/bin/local-clipboard send-clipboard" >> ~/.config/skhd/skhdrc
+echo "ctrl + alt - c : $HOME/.local/bin/local-clipboard send-clipboard" >> ~/.config/skhd/skhdrc
 skhd --start-service
 # grant Accessibility permission when prompted
 ```

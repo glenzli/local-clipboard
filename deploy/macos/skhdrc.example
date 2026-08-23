@@ -3,7 +3,7 @@
 # add these lines to ~/.config/skhd/skhdrc
 
 # push clipboard (auto: files / screenshot / text)
-ctrl + alt - space : $HOME/.local/bin/local-clipboard send-clipboard
+ctrl + alt - c : $HOME/.local/bin/local-clipboard send-clipboard
 
 # open the local control panel
 ctrl + alt - u : open http://127.0.0.1:9101
