@@ -75,11 +75,18 @@ serve -addr :9100 -token s            run the hub
 All senders accept `-to <device>` to target one online device instead of broadcasting.
 Without `-server` they route through the local daemon (progress shows in the UI); with `-server` they go direct.
 
-## Hotkeys (bind send-clipboard to a combo that's free on your OS)
+## Hotkeys
 
-Recommended combo everywhere: `Ctrl+Alt+C` (macOS maps Option to Alt, same muscle memory).
+The daemon registers a **global hotkey in-process**: `Ctrl+Alt+C` sends the current clipboard
+(macOS maps Option to Alt — same muscle memory on every platform). Change it with `-hotkey ctrl+shift+d`, disable with `-hotkey ""`.
 
-**macOS — Shortcuts.app (built-in, no extra software)**
+macOS first run: grant Accessibility when prompted (System Settings → Privacy & Security → Accessibility
+→ add `~/.local/bin/local-clipboard`; hidden folders: press Cmd+Shift+. in the file picker).
+It retries every 15s, so no restart is needed after granting.
+
+Prefer your OS-native binding instead? Pass `-hotkey ""` and bind the same CLI command via:
+
+**Shortcuts.app (built-in)**
 
 1. Open Shortcuts.app -> new shortcut
 2. Add action "Run Shell Script", input: `/Users/YOURNAME/.local/bin/local-clipboard send-clipboard`
