@@ -80,7 +80,7 @@ func main() {
 		}
 		mustServer(server)
 		c := client.New(*server, *name, *token)
-		die(client.SendCurrentClipboard(c, *to, client.SendEventHooks{}))
+		die(client.SendCurrentClipboard(c, *to, c.StoreHooks()))
 		fmt.Printf("sent clipboard to %s\n", targetDesc(*to))
 
 	case "send-text":
