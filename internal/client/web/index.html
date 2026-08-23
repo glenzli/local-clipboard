@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>Local Clipboard</title>
+<style>
+:root { --bg:#0f1115; --card:#1a1d24; --fg:#e6e9ef; --dim:#8b93a3; --acc:#4f8cff; --ok:#3fb96f; --err:#e05555; }
+* { box-sizing:border-box; margin:0; padding:0; }
+body { background:var(--bg); color:var(--fg); font:14px/1.5 -apple-system,"PingFang SC","Segoe UI",sans-serif; padding:20px; max-width:860px; margin:0 auto; }
+header { display:flex; align-items:center; gap:10px; margin-bottom:16px; }
+header h1 { font-size:18px; font-weight:600; }
+.dot { width:10px; height:10px; border-radius:50%; background:var(--err); }
+.dot.up { background:var(--ok); }
+.meta { color:var(--dim); font-size:12px; }
+.card { background:var(--card); border-radius:10px; padding:14px 16px; margin-bottom:14px; }
+.card h2 { font-size:13px; color:var(--dim); text-transform:uppercase; letter-spacing:.05em; margin-bottom:10px; }
+.row { display:flex; align-items:center; gap:10px; padding:7px 0; border-top:1px solid #262a33; }
+.row:first-of-type { border-top:none; }
+.row .grow { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sub { color:var(--dim); font-size:12px; }
+.badge { font-size:11px; padding:2px 8px; border-radius:99px; background:#262a33; color:var(--dim); }
+.badge.done,.badge.received { color:var(--ok); }
+.badge.failed { color:var(--err); }
+.badge.sending,.badge.offered { color:var(--acc); }
+button { background:var(--acc); color:#fff; border:none; border-radius:7px; padding:6px 14px; font-size:13px; cursor:pointer; }
+button:disabled { opacity:.4; cursor:default; }
+.pbar { height:4px; background:#262a33; border-radius:2px; overflow:hidden; flex:1; }
+.pbar > div { height:100%; background:var(--acc); width:0; transition:width .2s; }
+.empty { color:var(--dim); text-align:center; padding:18px 0; }
+.sendbox { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+input[type=text] { background:#12151b; border:1px solid #2a2f3a; color:var(--fg); border-radius:7px; padding:7px 10px; font-size:13px; width:160px; }
+label.filebtn { background:#262a33; border-radius:7px; padding:7px 14px; cursor:pointer; font-size:13px; }
+label.filebtn input { display:none; }
+</style>
+</head>
+<body>
+<header>
+  <div class="dot" id="dot"></div>
+  <h1>Local Clipboard</h1>
+  <span class="meta" id="meta"></span>
+</header>
+
+<div class="card">
+  <h2>发送到设备</h2>
+  <div class="sendbox">
+    <button onclick="sendClip()">推送剪贴板</button>
+    <label class="filebtn">发文件<input type="file" multiple onchange="sendFiles(this)"></label>
+    <input type="text" id="to" placeholder="目标设备名（空=全部）">
+    <span class="meta">剪贴板无感：按你的全局快捷键即可</span>
+  </div>
+</div>
+
+<div class="card" id="pendingCard">
+  <h2>待接收文件</h2>
+  <div id="pending"></div>
+</div>
+
+<div class="card">
+  <h2>传输记录</h2>
+  <div id="events"></div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const fmtSize = n => n>=1048576 ? (n/1048576).toFixed(1)+'MB' : n>=1024 ? Math.round(n/1024)+'KB' : n+'B';
+const fmtTime = t => new Date(t).toLocaleTimeString();
+
+async function refresh(){
+  try {
+    const s = await (await fetch('/api/state')).json();
+    $('dot').className = 'dot' + (s.connected ? ' up':'');
+    const pend = (s.events||[]).filter(e=>e.state==='offered'||e.state==='sending'||e.state==='failed');
+    const done = (s.events||[]).filter(e=>!(e.state==='offered'));
+    let ph = '';
+    for (const e of pend) {
+      ph += `<div class="row"><span class="badge">${e.state==='offered'?'待接收':''}${e.state==='sending'?'传输中':''}${e.state==='failed'?'失败':''}</span>
+        <span class="grow">${e.name||'(剪贴板)'}<div class="sub">来自 ${e.peer} · ${fmtSize(e.size)}</div></span>`;
+      if (e.state==='offered') ph += `<button onclick="accept('${e.fid}')">接收</button>`;
+      if (e.state==='sending') ph += `<div class="pbar"><div style="width:${e.pct||0}%"></div></div><span class="sub">${e.pct||0}%</span>`;
+      if (e.state==='failed') ph += `<button onclick="retry('${e.fid}')">重试</button>`;
+      ph += '</div>';
+    }
+    $('pending').innerHTML = ph || '<div class="empty">没有进行中的传输</div>';
+    let eh = '';
+    for (const e of (s.events||[]).slice(0,30)) {
+      eh += `<div class="row"><span class="sub" style="width:70px">${fmtTime(e.time)}</span>
+        <span class="badge ${e.state}">${e.dir==='in'?'收':'发'}·${e.kind}</span>
+        <span class="grow">${e.name||'(剪贴板内容)'}<div class="sub">${e.peer}</div></span>
+        <span class="sub">${fmtSize(e.size)}</span><span class="badge ${e.state}">${stateText(e)}</span></div>`;
+    }
+    $('events').innerHTML = eh || '<div class="empty">暂无记录</div>';
+  } catch(e) { $('meta').textContent = 'UI 离线'; }
+}
+function stateText(e){
+  return {done:'完成',received:'已保存',failed:'失败',sending:'发送中',offered:'待接收'}[e.state]||e.state;
+}
+async function accept(fid){
+  await fetch('/api/accept',{method:'POST',body:JSON.stringify({fid})});
+}
+async function sendClip(){
+  const to = $('to').value.trim();
+  const r = await fetch('/api/send-clipboard',{method:'POST',body:JSON.stringify({to})});
+  if(!r.ok) alert(await r.text());
+}
+async function sendFiles(input){
+  const to = $('to').value.trim();
+  for (const f of input.files) {
+    const fd = new FormData();
+    fd.append('file', f);
+    fd.append('to', to);
+    await fetch('/api/send-file',{method:'POST',body:fd});
+  }
+  input.value='';
+}
+setInterval(refresh, 800);
+refresh();
+</script>
+</body>
+</html>

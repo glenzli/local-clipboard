@@ -34,9 +34,18 @@ func main() {
 		server := fs.String("server", "", "hub address, e.g. nas:9100")
 		name := fs.String("name", defaultName(), "device name")
 		token := fs.String("token", "", "shared token")
+		uiPort := fs.Int("ui-port", client.DefaultUIPort, "local UI port (0 = off)")
 		fs.Parse(os.Args[2:])
 		mustServer(server)
-		client.New(*server, *name, *token).Run()
+		c := client.New(*server, *name, *token)
+		if *uiPort > 0 {
+			go func() {
+				if err := client.StartUI(c, *uiPort); err != nil {
+					log.Printf("[ui] disabled: %v", err)
+				}
+			}()
+		}
+		c.Run()
 
 	case "send-clipboard":
 		fs := flag.NewFlagSet("send-clipboard", flag.ExitOnError)
@@ -45,12 +54,31 @@ func main() {
 		token := fs.String("token", "", "")
 		to := fs.String("to", "", "target device name (empty = all online)")
 		fs.Parse(os.Args[2:])
-		mustServer(server)
-		msg, _, isFileHint, err := client.DetectAndBuildClipboardMessage()
-		die(err)
-		if isFileHint {
-			fmt.Fprintln(os.Stderr, "clipboard holds large text; save it to a file and use send-file")
+		if *server == "" {
+			viaDaemon, derr := client.SendClipboardViaDaemon(*to)
+			if viaDaemon {
+				die(derr)
+				fmt.Printf("sent clipboard to %s via daemon\n", targetDesc(*to))
+				return
+			}
+			fmt.Fprintln(os.Stderr, "local daemon not running; pass -server nas:9100 for direct mode")
 			os.Exit(1)
+		}
+		mustServer(server)
+		msg, hint, err := client.DetectAndBuildClipboardMessage()
+		die(err)
+		if hint {
+			fmt.Fprintln(os.Stderr, "clipboard holds very large text; save it to a file and use send-file")
+			os.Exit(1)
+		}
+		if *server == "" && len(fs.Args()) > 0 {
+			*server = fs.Args()[0]
+		}
+		mustServer(server)
+		if viaDaemon, derr := client.SendClipboardViaDaemon(*to); viaDaemon {
+			die(derr)
+			fmt.Printf("sent %s (%s) to %s via daemon\n", msg.Type, humanBytes(msg.Size), targetDesc(*to))
+			return
 		}
 		msg.Target = *to
 		die(client.SendPayload(*server, *name, *token, msg))
@@ -89,22 +117,31 @@ func main() {
 		token := fs.String("token", "", "")
 		to := fs.String("to", "", "")
 		fs.Parse(os.Args[2:])
-		mustServer(server)
 		args := fs.Args()
 		if len(args) == 0 {
-			die(fmt.Errorf("usage: send-file [-to device] <file...>"))
+			die(fmt.Errorf("usage: send-file [-server nas:9100] [-to device] <file...>"))
 		}
-		for _, p := range args {
-			fid, size, err := client.UploadFile(*server, *name, *token, p)
-			die(err)
-			msg := proto.NewMessage("", proto.TypeFile)
-			msg.Name = base(p)
-			msg.Size = size
-			msg.FID = fid
-			msg.Target = *to
-			die(client.SendPayload(*server, *name, *token, msg))
-			fmt.Printf("sent file %s (%s) to %s\n", msg.Name, humanBytes(size), targetDesc(*to))
+		if *server != "" || len(args) > 1 {
+			for _, p := range args {
+				fid, size, err := client.UploadFile(*server, *token, p, base(p), nil)
+				die(err)
+				msg := proto.NewMessage("", proto.TypeFile)
+				msg.Name = base(p)
+				msg.Size = size
+				msg.FID = fid
+				msg.Target = *to
+				die(client.SendPayload(*server, *name, *token, msg))
+				fmt.Printf("sent file %s (%s) to %s\n", msg.Name, humanBytes(size), targetDesc(*to))
+			}
+			return
 		}
+		viaDaemon, derr := client.SendFileViaDaemon(args[0], *to)
+		if !viaDaemon {
+			fmt.Fprintln(os.Stderr, "local daemon not running; pass -server nas:9100 for direct mode")
+			os.Exit(1)
+		}
+		die(derr)
+		fmt.Printf("sent file %s via daemon\n", base(args[0]))
 
 	case "accept":
 		fs := flag.NewFlagSet("accept", flag.ExitOnError)
@@ -116,7 +153,7 @@ func main() {
 		if len(fs.Args()) != 1 {
 			die(fmt.Errorf("usage: accept -server nas:9100 <file-id>"))
 		}
-		path, err := client.DownloadFile(*server, *token, fs.Args()[0], *out)
+		path, err := client.DownloadTo(*server, *token, fs.Args()[0], *out, nil)
 		die(err)
 		fmt.Printf("saved to %s\n", path)
 

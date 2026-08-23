@@ -14,22 +14,40 @@ import (
 	"github.com/g4i/local-clipboard/internal/proto"
 )
 
-const maxUpload = 1 << 30
-
-func authQuery(server, token string) string {
-	u := "http://" + server + "/"
-	if token != "" {
-		u += "?token=" + url.QueryEscape(token)
-	}
-	return u
-}
-
 var directHTTP = &http.Client{
 	Timeout:   6 * time.Hour,
 	Transport: &http.Transport{Proxy: nil},
 }
 
-func UploadFile(server, name, token, path string) (string, int64, error) {
+type progressFunc func(done, total int64)
+
+type progressReader struct {
+	r      io.Reader
+	total  int64
+	cb     progressFunc
+	done   int64
+	lastPc int
+}
+
+func (p *progressReader) Read(b []byte) (int, error) {
+	n, err := p.r.Read(b)
+	p.done += int64(n)
+	if p.cb != nil {
+		p.cb(p.done, p.total)
+	}
+	if p.total > 0 {
+		pc := int(p.done * 100 / p.total)
+		if pc != p.lastPc && pc%5 == 0 {
+			fmt.Printf("\r%s%d%% (%s/%s)", progressPrefix, pc, humanBytes(p.done), humanBytes(p.total))
+			p.lastPc = pc
+		}
+	}
+	return n, err
+}
+
+var progressPrefix = ""
+
+func UploadFile(server, token, path, displayName string, cb progressFunc) (string, int64, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return "", 0, err
@@ -38,8 +56,8 @@ func UploadFile(server, name, token, path string) (string, int64, error) {
 	fi, _ := f.Stat()
 	size := fi.Size()
 
-	pr := &progressReader{r: f, total: size}
-	q := "name=" + url.QueryEscape(filepath.Base(path))
+	pr := &progressReader{r: f, total: size, cb: cb}
+	q := "name=" + url.QueryEscape(displayName)
 	if token != "" {
 		q += "&token=" + url.QueryEscape(token)
 	}
@@ -68,27 +86,7 @@ func UploadFile(server, name, token, path string) (string, int64, error) {
 	return out.ID, size, nil
 }
 
-type progressReader struct {
-	r       io.Reader
-	total   int64
-	done    int64
-	lastPct int
-}
-
-func (p *progressReader) Read(b []byte) (int, error) {
-	n, err := p.r.Read(b)
-	p.done += int64(n)
-	if p.total > 0 {
-		pct := int(p.done * 100 / p.total)
-		if pct != p.lastPct && pct%5 == 0 {
-			fmt.Printf("\ruploading %d%% (%s/%s)", pct, humanBytes(p.done), humanBytes(p.total))
-			p.lastPct = pct
-		}
-	}
-	return n, err
-}
-
-func DownloadFile(server, token, fid, outDir string) (string, error) {
+func DownloadTo(server, token, fid, outDir string, cb progressFunc) (string, error) {
 	name := fid
 	if i := strings.Index(fid, "-"); i > 0 && len(fid) > i+1 {
 		name = fid[i+1:]
@@ -111,7 +109,7 @@ func DownloadFile(server, token, fid, outDir string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	pr := &dlProgress{r: resp.Body, total: resp.ContentLength}
+	pr := &progressReader{r: resp.Body, total: resp.ContentLength, cb: cb}
 	_, err = io.Copy(out, pr)
 	closeErr := out.Close()
 	fmt.Println()
@@ -124,43 +122,34 @@ func DownloadFile(server, token, fid, outDir string) (string, error) {
 	return dst, nil
 }
 
-type dlProgress struct {
-	r     io.Reader
-	total int64
-	done  int64
-	last  int
-}
-
-func (p *dlProgress) Read(b []byte) (int, error) {
-	n, err := p.r.Read(b)
-	p.done += int64(n)
-	if p.total > 0 {
-		pct := int(p.done * 100 / p.total)
-		if pct != p.last && pct%5 == 0 {
-			fmt.Printf("\rdownloading %d%% (%s/%s)", pct, humanBytes(p.done), humanBytes(p.total))
-			p.last = pct
-		}
-	}
-	return n, err
-}
-
-func DetectAndBuildClipboardMessage() (*proto.Message, []byte, bool, error) {
-	img, imgErr := ReadImage()
+func DetectAndBuildClipboardMessage() (*proto.Message, bool, error) {	img, imgErr := ReadImage()
 	if imgErr == nil && len(img) > 0 {
 		m := proto.NewMessage("", proto.TypeImage)
 		m.Size = int64(len(img))
 		m.Content = encodeBase64(img)
-		return m, nil, false, nil
+		return m, false, nil
 	}
 	text, txtErr := ReadText()
 	if txtErr != nil || text == "" {
-		return nil, nil, false, fmt.Errorf("clipboard is empty (image read also failed: %v)", imgErr)
+		return nil, false, fmt.Errorf("clipboard is empty (image read also failed: %v)", imgErr)
 	}
 	m := proto.NewMessage("", proto.TypeText)
 	m.Size = int64(len(text))
 	if m.Size > maxInlineText {
-		return nil, nil, true, fmt.Errorf("text too large for inline sync (%s); put it in a file and use send-file", humanBytes(m.Size))
+		return nil, true, fmt.Errorf("text too large for inline sync (%s); put it in a file and use send-file", humanBytes(m.Size))
 	}
 	m.Content = text
-	return m, nil, false, nil
+	return m, false, nil
+}
+
+func humanBytes(n int64) string {
+	const kb, mb = 1 << 10, 1 << 20
+	switch {
+	case n >= mb:
+		return fmt.Sprintf("%.1fMB", float64(n)/mb)
+	case n >= kb:
+		return fmt.Sprintf("%.0fKB", float64(n)/kb)
+	default:
+		return fmt.Sprintf("%dB", n)
+	}
 }

@@ -30,11 +30,14 @@ type Client struct {
 	server string
 	name   string
 	token  string
+	store  *Store
 }
 
 func New(server, name, token string) *Client {
-	return &Client{server: server, name: name, token: token}
+	return &Client{server: server, name: name, token: token, store: NewStore()}
 }
+
+func (c *Client) Store() *Store { return c.store }
 
 func knownHostsPath() (string, error) {
 	base, err := os.UserConfigDir()
@@ -136,9 +139,11 @@ func (c *Client) Run() {
 			continue
 		}
 		backoff = baseReconnect
+		c.store.SetConnected(true)
 		log.Printf("[%s] connected to %s, waiting for incoming items...", c.name, c.server)
 		err = c.receiveLoop(conn)
 		conn.Close()
+		c.store.SetConnected(false)
 		log.Printf("[%s] disconnected: %v", c.name, err)
 		time.Sleep(baseReconnect)
 	}
@@ -202,7 +207,8 @@ func (c *Client) handleImage(msg proto.Message) {
 
 func (c *Client) handleFileNotice(msg proto.Message) {
 	log.Printf("[%s] <- file offer from %s: %s (%s) id=%s", c.name, msg.Source, msg.Name, humanBytes(msg.Size), msg.FID)
-	notify(fmt.Sprintf("%s 发来文件 %s (%s)\n接收: local-clipboard accept -server %s -token ... %s", msg.Source, msg.Name, humanBytes(msg.Size), c.server, msg.FID))
+	c.store.Add(&Event{Dir: "in", Kind: "file", Peer: msg.Source, Name: msg.Name, Size: msg.Size, State: StateOffered, FID: msg.FID})
+	notify(fmt.Sprintf("%s 发来文件 %s (%s)\n点击接收或在 UI 中操作", msg.Source, msg.Name, humanBytes(msg.Size)))
 }
 
 func notify(text string) {
@@ -222,14 +228,3 @@ func SendPayload(server, name, token string, msg *proto.Message) error {
 	return conn.WriteMessage(websocket.TextMessage, data)
 }
 
-func humanBytes(n int64) string {
-	const kb, mb = 1 << 10, 1 << 20
-	switch {
-	case n >= mb:
-		return fmt.Sprintf("%.1fMB", float64(n)/mb)
-	case n >= kb:
-		return fmt.Sprintf("%.0fKB", float64(n)/kb)
-	default:
-		return fmt.Sprintf("%dB", n)
-	}
-}
