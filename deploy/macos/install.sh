@@ -13,7 +13,7 @@ if [ -z "$SERVER" ]; then
 fi
 case $(uname -m) in
   arm64) BINFILE=local-clipboard-darwin-arm64 ;;
-  x86_64) BINFILE=local-clipboard-darwin-amd64 ;;
+  x86_64) echo "Intel Macs: run 'make build' on this machine to produce local-clipboard-darwin-amd64 first"; exit 1 ;;
   *) echo "unsupported arch"; exit 1 ;;
 esac
 BIN="$HOME/.local/bin/local-clipboard"
