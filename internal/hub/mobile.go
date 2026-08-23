@@ -1,13 +1,16 @@
 package hub
 
 import (
+	"bytes"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"embed"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"image/png"
 	"mime"
 	"net/http"
 	"net/url"
@@ -27,6 +30,8 @@ const (
 	mobileTrustedTTL    = 400 * 24 * time.Hour
 	maxMobileText       = 1 << 20
 	maxMobileJSON       = maxMobileText + (8 << 10)
+	maxMobileImage      = 20 << 20
+	maxMobileImageJSON  = (maxMobileImage * 4 / 3) + (128 << 10)
 	maxInboxItems       = 50
 	maxInboxPreview     = 240
 )
@@ -339,6 +344,55 @@ func (h *Hub) handleMobileText(w http.ResponseWriter, r *http.Request) {
 	msg := proto.NewMessage(normalizeMobileName(req.Source, "Mobile Web"), proto.TypeText)
 	msg.Content = req.Text
 	msg.Size = int64(len(req.Text))
+	msg.Target = normalizeMobileName(req.Target, "")
+	if strings.TrimSpace(req.Target) != "" && msg.Target == "" {
+		http.Error(w, "invalid target device", http.StatusBadRequest)
+		return
+	}
+	h.publishMobileMessage(w, msg)
+}
+
+func (h *Hub) handleMobileImage(w http.ResponseWriter, r *http.Request) {
+	if !h.requireMobileRequest(w, r, http.MethodPost) {
+		return
+	}
+	var req struct {
+		Content string `json:"content"`
+		Name    string `json:"name"`
+		Source  string `json:"source"`
+		Target  string `json:"target"`
+	}
+	if !decodeJSON(w, r, maxMobileImageJSON, &req) {
+		return
+	}
+	data, err := base64.StdEncoding.DecodeString(req.Content)
+	if err != nil || len(data) == 0 {
+		http.Error(w, "invalid image data", http.StatusBadRequest)
+		return
+	}
+	if len(data) > maxMobileImage {
+		http.Error(w, "image is too large", http.StatusRequestEntityTooLarge)
+		return
+	}
+	config, err := png.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		http.Error(w, "image must be PNG", http.StatusBadRequest)
+		return
+	}
+	if config.Width <= 0 || config.Height <= 0 || config.Width > 16384 || config.Height > 16384 || int64(config.Width)*int64(config.Height) > 100_000_000 {
+		http.Error(w, "image dimensions are too large", http.StatusRequestEntityTooLarge)
+		return
+	}
+
+	name := filepath.Base(strings.TrimSpace(req.Name))
+	if name == "." || name == "" {
+		name = "mobile-image.png"
+	}
+	name = strings.TrimSuffix(name, filepath.Ext(name)) + ".png"
+	msg := proto.NewMessage(normalizeMobileName(req.Source, "Mobile Web"), proto.TypeImage)
+	msg.Name = name
+	msg.Content = req.Content
+	msg.Size = int64(len(data))
 	msg.Target = normalizeMobileName(req.Target, "")
 	if strings.TrimSpace(req.Target) != "" && msg.Target == "" {
 		http.Error(w, "invalid target device", http.StatusBadRequest)

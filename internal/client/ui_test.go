@@ -6,6 +6,8 @@ import (
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -16,7 +18,7 @@ func TestEmbeddedConsoleLocalizationAssets(t *testing.T) {
 		t.Fatal(err)
 	}
 	index := string(sub)
-	for _, fragment := range []string{`src="/app-icon.png"`, `src="/i18n.js"`, `data-locale="zh"`, `data-locale="en"`, `class="history-row"`, `class="event-main"`} {
+	for _, fragment := range []string{`src="/app-icon.png"`, `src="/i18n.js"`, `data-locale="zh"`, `data-locale="en"`, `class="history-row"`, `class="event-main"`, `/api/reveal`, `showInFolder`} {
 		if !strings.Contains(index, fragment) {
 			t.Fatalf("embedded console is missing %q", fragment)
 		}
@@ -118,5 +120,54 @@ func TestRequireLocalMutation(t *testing.T) {
 				t.Fatalf("status = %d, want %d", resp.Code, tt.wantStatus)
 			}
 		})
+	}
+}
+
+func TestRevealReceivedFileUsesStoredPath(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "received.txt")
+	if err := os.WriteFile(path, []byte("received"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store := NewStore()
+	store.Add(&Event{Dir: "in", Kind: "file", FID: "file-1", State: StateOffered})
+	store.SetFIDReceived("file-1", path)
+
+	var revealed string
+	u := &UIServer{
+		c: &Client{store: store},
+		revealPath: func(value string) error {
+			revealed = value
+			return nil
+		},
+	}
+	req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:9101/api/reveal", strings.NewReader(`{"fid":"file-1"}`))
+	resp := httptest.NewRecorder()
+	u.handleReveal(resp, req)
+	if resp.Code != http.StatusNoContent || revealed != path {
+		t.Fatalf("reveal status=%d path=%q, want status=%d path=%q", resp.Code, revealed, http.StatusNoContent, path)
+	}
+
+	snapshot := store.Snapshot(true)
+	events := snapshot["events"].([]*Event)
+	if len(events) != 1 || events[0].State != StateReceived || events[0].Path != path {
+		t.Fatalf("received event = %+v", events)
+	}
+}
+
+func TestRevealRejectsUnknownOrMissingReceivedFile(t *testing.T) {
+	store := NewStore()
+	store.Add(&Event{Dir: "in", Kind: "file", FID: "missing", State: StateOffered})
+	store.SetFIDReceived("missing", filepath.Join(t.TempDir(), "gone.txt"))
+	u := &UIServer{c: &Client{store: store}, revealPath: func(string) error {
+		t.Fatal("revealPath should not be called")
+		return nil
+	}}
+	for _, fid := range []string{"unknown", "missing"} {
+		req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:9101/api/reveal", strings.NewReader(`{"fid":"`+fid+`"}`))
+		resp := httptest.NewRecorder()
+		u.handleReveal(resp, req)
+		if resp.Code != http.StatusNotFound {
+			t.Fatalf("fid %q status=%d, want %d", fid, resp.Code, http.StatusNotFound)
+		}
 	}
 }

@@ -115,7 +115,11 @@
           <small data-i18n="fileLimit"></small>
         </label>
         <div id="selectedFiles" class="selected-files"></div>
-        <button class="primary full" type="button" id="sendFilesBtn" disabled data-i18n="uploadAndSend"></button>
+        <div class="file-actions">
+          <button class="secondary" type="button" id="sendImageBtn" disabled data-i18n="sendToClipboard"></button>
+          <button class="primary" type="button" id="sendFilesBtn" disabled data-i18n="sendAsFile"></button>
+        </div>
+        <small class="action-help" data-i18n="imageClipboardHelp"></small>
         <div class="progress" id="uploadProgress" hidden><div></div></div>
         <p class="form-status" id="fileStatus" role="status"></p>
       </section>

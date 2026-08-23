@@ -35,7 +35,9 @@
       stateSending: '发送中',
       stateOffered: '待接收',
       stateReceiving: '接收中',
-      stateApplied: '已写入剪贴板'
+      stateApplied: '已写入剪贴板',
+      showInFolder: '打开所在位置',
+      revealFailed: '无法打开文件所在位置'
     }),
     en: Object.freeze({
       documentTitle: 'Local Clipboard Console',
@@ -68,7 +70,9 @@
       stateSending: 'Sending',
       stateOffered: 'Pending',
       stateReceiving: 'Receiving',
-      stateApplied: 'Copied to clipboard'
+      stateApplied: 'Copied to clipboard',
+      showInFolder: 'Show in folder',
+      revealFailed: 'Could not open the file location'
     })
   });
 

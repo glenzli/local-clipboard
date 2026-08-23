@@ -16,6 +16,7 @@ type Event struct {
 	Size  int64  `json:"size"`
 	State string `json:"state"`
 	FID   string `json:"fid,omitempty"`
+	Path  string `json:"path,omitempty"`
 	Pct   int    `json:"pct,omitempty"`
 	Done  int64  `json:"done,omitempty"`
 }
@@ -140,6 +141,28 @@ func (s *Store) SetFIDState(fid, state string) {
 			delete(s.pending, fid)
 		}
 	}
+}
+
+func (s *Store) SetFIDReceived(fid, path string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if e, ok := s.pending[fid]; ok {
+		e.State = StateReceived
+		e.Path = path
+		delete(s.pending, fid)
+	}
+}
+
+func (s *Store) ReceivedPath(fid string) (string, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := len(s.events) - 1; i >= 0; i-- {
+		e := s.events[i]
+		if e.FID == fid && e.State == StateReceived && e.Path != "" {
+			return e.Path, true
+		}
+	}
+	return "", false
 }
 
 func (s *Store) PendingFIDs() []string {

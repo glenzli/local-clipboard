@@ -2,7 +2,10 @@ package hub
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
+	"image"
+	"image/color"
 	"image/png"
 	"io"
 	"mime"
@@ -32,7 +35,7 @@ func TestMobileWebAndStatusCompatibility(t *testing.T) {
 	if csp := pageResp.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "frame-ancestors 'none'") {
 		t.Fatalf("mobile page Content-Security-Policy = %q", csp)
 	}
-	for _, fragment := range []string{`/mobile/app.css`, `/mobile/app.js`, `/mobile/manifest.webmanifest`, `id="installBanner"`, `id="trustDevice"`, `id="sendPanel"`, `id="receivePanel"`} {
+	for _, fragment := range []string{`/mobile/app.css`, `/mobile/app.js`, `/mobile/manifest.webmanifest`, `id="installBanner"`, `id="trustDevice"`, `id="sendPanel"`, `id="sendImageBtn"`, `id="receivePanel"`} {
 		if !strings.Contains(pageResp.Body.String(), fragment) {
 			t.Fatalf("mobile page missing %q", fragment)
 		}
@@ -41,7 +44,7 @@ func TestMobileWebAndStatusCompatibility(t *testing.T) {
 	assetReq := httptest.NewRequest(http.MethodGet, "http://hub.local/mobile/app.js", nil)
 	assetResp := httptest.NewRecorder()
 	mux.ServeHTTP(assetResp, assetReq)
-	if assetResp.Code != http.StatusOK || !strings.Contains(assetResp.Body.String(), "sendFiles") || !strings.Contains(assetResp.Body.String(), "forgetFailed") {
+	if assetResp.Code != http.StatusOK || !strings.Contains(assetResp.Body.String(), "sendImageToClipboard") || !strings.Contains(assetResp.Body.String(), "/api/send-image") || !strings.Contains(assetResp.Body.String(), "forgetFailed") {
 		t.Fatalf("mobile JavaScript asset was not served: status=%d", assetResp.Code)
 	}
 
@@ -183,6 +186,63 @@ func TestMobileTextTargetsDesktopAndAppearsInHistory(t *testing.T) {
 	h.handleMobileText(invalidResp, invalidReq)
 	if invalidResp.Code != http.StatusBadRequest || len(h.history) != 1 {
 		t.Fatalf("invalid target status=%d history=%d", invalidResp.Code, len(h.history))
+	}
+}
+
+func TestMobileImageTargetsDesktopClipboard(t *testing.T) {
+	h := newMobileTestHub(t, "secret")
+	desktop := testPeer("Desktop")
+	h.peers[desktop] = struct{}{}
+
+	var imageData bytes.Buffer
+	img := image.NewRGBA(image.Rect(0, 0, 2, 2))
+	img.Set(0, 0, color.RGBA{R: 120, G: 167, B: 207, A: 255})
+	if err := png.Encode(&imageData, img); err != nil {
+		t.Fatal(err)
+	}
+	body, err := json.Marshal(map[string]string{
+		"content": base64.StdEncoding.EncodeToString(imageData.Bytes()),
+		"name":    "手机照片.heic",
+		"source":  "Phone",
+		"target":  "Desktop",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := mobileJSONRequest(http.MethodPost, "/api/send-image", string(body))
+	req.Header.Set("X-Token", "secret")
+	resp := httptest.NewRecorder()
+	h.handleMobileImage(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("send image status = %d, want %d: %s", resp.Code, http.StatusOK, resp.Body.String())
+	}
+
+	select {
+	case data := <-desktop.send:
+		var msg proto.Message
+		if err := json.Unmarshal(data, &msg); err != nil {
+			t.Fatal(err)
+		}
+		if msg.Type != proto.TypeImage || msg.Name != "手机照片.png" || msg.Source != "Phone" || msg.Target != "Desktop" {
+			t.Fatalf("forwarded image metadata = %+v", msg)
+		}
+		decoded, err := base64.StdEncoding.DecodeString(msg.Content)
+		if err != nil || !bytes.Equal(decoded, imageData.Bytes()) || msg.Size != int64(imageData.Len()) {
+			t.Fatalf("forwarded image bytes=%d size=%d err=%v", len(decoded), msg.Size, err)
+		}
+	default:
+		t.Fatal("target desktop did not receive the image")
+	}
+	if len(h.history) != 1 || h.history[0].message.Type != proto.TypeImage {
+		t.Fatalf("history = %+v", h.history)
+	}
+
+	badReq := mobileJSONRequest(http.MethodPost, "/api/send-image", `{"content":"bm90IGEgcG5n","name":"bad.png"}`)
+	badReq.Header.Set("X-Token", "secret")
+	badResp := httptest.NewRecorder()
+	h.handleMobileImage(badResp, badReq)
+	if badResp.Code != http.StatusBadRequest || len(h.history) != 1 {
+		t.Fatalf("invalid image status=%d history=%d", badResp.Code, len(h.history))
 	}
 }
 

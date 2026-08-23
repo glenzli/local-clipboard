@@ -193,13 +193,16 @@ $HOME/Applications/LocalClipboard.app/Contents/MacOS/local-clipboard send-clipbo
 令牌不会写入 URL、cookie 或浏览器存储。只有清除浏览器数据、取消信任、凭证过期或
 修改 Hub 共享令牌后，才需要重新输入。
 
-- **发送**：选择在线目标设备，粘贴文本，或选择照片和文件上传。文本会进入桌面端
-  剪贴板，文件会成为桌面端的待接收项目。
+- **发送**：选择在线目标设备并粘贴文本，或选择照片和文件。文本会进入桌面端剪贴板；
+  单张照片可明确选择“发送到剪贴板”（浏览器会先转换为 PNG），也可连同其他内容
+  “作为文件发送”，成为桌面端的待接收项目。
 - **接收**：页面列出发给此手机设备名或广播的近期内容。文本需要点击复制，图片需要
   查看并保存，文件通过 Hub 下载。
 - 手机设备名保存在当前浏览器中；桌面端可以将它填入目标设备名进行定向发送，留空
   则按现有规则广播。
 - 收件箱复用 Hub 的有界内存历史，Hub 重启后会清空；中转文件仍按 24 小时规则删除。
+- 桌面端接收文件后，传输记录会显示“打开所在位置”，可直接在 Finder、Explorer 或
+  Linux 文件管理器中定位保存结果。
 - 页面包含可安装的 Web App Manifest。Android/桌面 Chrome 可以使用页面安装提示或浏览器
   菜单安装；iPhone 使用分享菜单中的“添加到主屏幕”。从主屏幕图标启动后会以独立窗口
   显示，不再显示普通浏览器地址栏。
@@ -208,6 +211,10 @@ $HOME/Applications/LocalClipboard.app/Contents/MacOS/local-clipboard send-clipbo
 此时页面会保留可选择文本，并提示使用系统的长按粘贴或复制。通过可信 HTTPS 反向代理
 访问 Hub 可以获得更完整的剪贴板按钮体验，并让 Chrome 稳定识别和安装 PWA。普通
 `http://nas-ip:9100` 下仍可从浏览器菜单尝试添加到主屏幕，但安装能力取决于平台。
+
+在 Android Chrome 中，普通 HTTP 通常只会创建带 Chrome 标记的浏览器快捷方式；这不是
+图标文件本身的问题。若要获得使用 Manifest 图标的独立 WebAPK，需要通过手机信任证书的
+HTTPS 地址访问 Hub 后再安装。PWA 图标已为 Android 图标遮罩预留更宽的安全留白。
 
 ### CLI
 
@@ -502,8 +509,10 @@ restarts; the shared token is never stored in the URL, cookie, or browser
 storage. You only need to enter it again after clearing browser data,
 forgetting the device, credential expiry, or a hub shared-token change.
 
-- **Send:** choose an online target, paste text, or select photos and files.
-  Text lands in the desktop clipboard; files become pending offers.
+- **Send:** choose an online target and paste text, or select photos and files.
+  Text lands in the desktop clipboard. One photo can explicitly be **sent to
+  clipboard** after browser-side PNG conversion, or it can be **sent as a
+  file** with other selections and become a pending desktop offer.
 - **Receive:** the page lists recent items addressed to this phone's device
   name or broadcast by another device. Copy text explicitly, view and save
   images, or download files from the hub.
@@ -511,6 +520,8 @@ forgetting the device, credential expiry, or a hub shared-token change.
   that name for targeted delivery, or leave the target empty to broadcast.
 - The inbox reuses the hub's bounded in-memory history and is cleared when the
   hub restarts. Relayed files still expire after 24 hours.
+- After a desktop receives a file, its history row offers **Show in folder** to
+  reveal the saved result in Finder, Explorer, or the Linux file manager.
 - The page includes an installable Web App Manifest. Android and desktop Chrome
   can use the page prompt or browser menu; on iPhone, use **Add to Home Screen**
   from the Share menu. Launching the home-screen icon uses a standalone window
@@ -523,6 +534,12 @@ proxy provides the complete clipboard-button experience and lets Chrome
 reliably recognize and install the PWA. On plain `http://nas-ip:9100`, adding
 the page from the browser menu may still work, but installation is platform-
 dependent.
+
+On Android Chrome, plain HTTP normally falls back to a browser shortcut with a
+Chrome badge; changing the icon file cannot remove that badge. To get a
+standalone WebAPK using the Manifest icon, install from an HTTPS URL whose
+certificate the phone trusts. The PWA artwork includes additional safe padding
+for Android icon masks.
 
 ### CLI
 

@@ -22,19 +22,21 @@ import (
 var webFS embed.FS
 
 type UIServer struct {
-	c      *Client
-	port   int
-	client *http.Client
+	c          *Client
+	port       int
+	client     *http.Client
+	revealPath func(string) error
 }
 
 func StartUI(c *Client, port int) error {
-	u := &UIServer{c: c, port: port, client: &http.Client{Transport: &http.Transport{Proxy: nil}}}
+	u := &UIServer{c: c, port: port, client: &http.Client{Transport: &http.Transport{Proxy: nil}}, revealPath: revealPath}
 	mux := http.NewServeMux()
 	sub, _ := fs.Sub(webFS, "web")
 	mux.Handle("/", http.FileServer(http.FS(sub)))
 	mux.HandleFunc("/api/state", u.handleState)
 	mux.HandleFunc("/api/accept", u.handleAccept)
 	mux.HandleFunc("/api/accept-all", u.handleAcceptAll)
+	mux.HandleFunc("/api/reveal", u.handleReveal)
 	mux.HandleFunc("/api/send-clipboard", u.handleSendClipboard)
 	mux.HandleFunc("/api/send-file", u.handleSendFile)
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
@@ -70,10 +72,37 @@ func (u *UIServer) acceptOne(fid string) {
 			u.c.store.SetFIDState(fid, StateFailed)
 			return
 		}
-		u.c.store.SetFIDState(fid, StateReceived)
+		u.c.store.SetFIDReceived(fid, path)
 		log.Printf("[ui] accepted -> %s", path)
 		notify(fmt.Sprintf("已保存 %s", path))
 	}()
+}
+
+func (u *UIServer) handleReveal(w http.ResponseWriter, r *http.Request) {
+	if !requireLocalMutation(w, r) {
+		return
+	}
+	var req struct {
+		FID string `json:"fid"`
+	}
+	if json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&req) != nil || req.FID == "" {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	path, ok := u.c.store.ReceivedPath(req.FID)
+	if !ok {
+		http.Error(w, "received file not found", http.StatusNotFound)
+		return
+	}
+	if info, err := os.Stat(path); err != nil || !info.Mode().IsRegular() {
+		http.Error(w, "received file no longer exists", http.StatusNotFound)
+		return
+	}
+	if u.revealPath == nil || u.revealPath(path) != nil {
+		http.Error(w, "could not open file location", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (u *UIServer) handleAccept(w http.ResponseWriter, r *http.Request) {

@@ -2,19 +2,23 @@
   'use strict';
 
   const $ = id => document.getElementById(id);
+  const maxClipboardImageBytes = 20 * (1 << 20);
+  const maxClipboardImagePixels = 100_000_000;
   const strings = {
     zh: {
       documentTitle:'Local Clipboard 手机收发', mobileHub:'NAS Hub · 手机收发', connectHub:'连接 NAS Hub',
       installTitle:'安装 Local Clipboard', installHelp:'添加到主屏幕，之后可像 App 一样直接打开。',
       installIOSHelp:'点击浏览器的分享按钮，然后选择“添加到主屏幕”。',
       installManualHelp:'打开浏览器菜单，选择“添加到主屏幕”或“安装应用”。', installAction:'安装', installGuide:'查看方法', installed:'已安装到设备',
+      installHTTPHelp:'当前 HTTP 连接只能创建带 Chrome 标记的快捷方式；通过可信 HTTPS 打开后可安装为独立应用。',
       tokenHelp:'首次输入共享令牌；信任后 Hub 重启也无需再次输入。令牌不会写入 URL 或浏览器存储。', sharedToken:'共享令牌',
       tokenPlaceholder:'输入 LOCALCLIP_TOKEN', trustDevice:'信任此设备', connect:'连接', thisDevice:'此手机的设备名称', disconnect:'取消信任',
       connected:'已连接', onlineDevices:n => `${n} 台桌面设备在线`, send:'发送', receive:'接收', sendText:'发送文本',
       sendTextHelp:'粘贴内容并明确发送到目标设备的剪贴板。', targetDevice:'目标设备', allDevices:'所有在线设备',
       textContent:'文本内容', textPlaceholder:'在这里长按粘贴，或使用下方按钮', paste:'从剪贴板粘贴',
-      sendTextAction:'发送文本', sendFiles:'发送文件或照片', sendFilesHelp:'文件上传到 Hub 后，接收设备会看到待接收项目。',
-      chooseFiles:'选择照片或文件', fileLimit:'单个文件最大 1 GiB，Hub 保留 24 小时', uploadAndSend:'上传并发送',
+      sendTextAction:'发送文本', sendFiles:'发送文件或照片', sendFilesHelp:'选择后可作为文件发送，或把单张图片直接写入电脑剪贴板。',
+      chooseFiles:'选择照片或文件', fileLimit:'单个文件最大 1 GiB，Hub 保留 24 小时', sendAsFile:'作为文件发送',
+      sendToClipboard:'发送到剪贴板', imageClipboardHelp:'“发送到剪贴板”仅支持单张图片，转换后的图片最大 20 MiB。',
       inbox:'接收箱', inboxHelp:'显示发给此设备或广播的最近内容。', refresh:'刷新', noInbox:'暂无可接收内容',
       copy:'复制', view:'查看', download:'下载', saveImage:'查看并保存', copied:'已复制到系统剪贴板',
       manualCopy:'浏览器未允许自动复制，请在文本框中长按复制。', pasteUnavailable:'请在文本框中长按并选择“粘贴”。',
@@ -22,6 +26,9 @@
       sending:'正在发送…', sent:n => n > 0 ? `已发送到 ${n} 台设备` : '已存入 Hub，目标设备当前不在线',
       fileSelected:n => `已选择 ${n} 个文件`, uploading:(i,n,name) => `正在上传 ${i}/${n}：${name}`,
       filesSent:(n,d) => `已发送 ${n} 个文件，共投递到 ${d} 台设备`, loading:'正在加载…',
+      preparingImage:'正在处理图片…', imageTooLarge:'转换后的图片超过 20 MiB，请改为作为文件发送',
+      imageDimensionsTooLarge:'图片尺寸过大，请改为作为文件发送',
+      imageUnsupported:'无法读取这张图片，请改为作为文件发送',
       textItem:'文本内容', imageItem:'图片', fileItem:'文件', from:(source,time) => `${source} · ${time}`,
       mobileDefault:'我的手机', forgetting:'正在取消信任…', forgetFailed:'取消信任失败，请稍后重试',
       sessionEnded:'此设备已退出并取消信任', unknownError:'发生未知错误'
@@ -31,14 +38,16 @@
       installTitle:'Install Local Clipboard', installHelp:'Add it to your home screen and open it like an app.',
       installIOSHelp:'Use the browser Share menu, then choose Add to Home Screen.',
       installManualHelp:'Open the browser menu and choose Add to Home screen or Install app.', installAction:'Install', installGuide:'View steps', installed:'Installed on this device',
+      installHTTPHelp:'This HTTP connection can only create a Chrome-badged shortcut. Open it through trusted HTTPS to install a standalone app.',
       tokenHelp:'Enter the shared token once. A trusted device stays signed in after Hub restarts; the token is never stored in the URL or browser.', sharedToken:'Shared token',
       tokenPlaceholder:'Enter LOCALCLIP_TOKEN', trustDevice:'Trust this device', connect:'Connect', thisDevice:'This phone’s device name', disconnect:'Forget device',
       connected:'Connected', onlineDevices:n => `${n} desktop device${n === 1 ? '' : 's'} online`, send:'Send', receive:'Receive',
       sendText:'Send text', sendTextHelp:'Paste content and explicitly send it to a target device’s clipboard.',
       targetDevice:'Target device', allDevices:'All online devices', textContent:'Text',
       textPlaceholder:'Long-press to paste here, or use the button below', paste:'Paste from clipboard', sendTextAction:'Send text',
-      sendFiles:'Send files or photos', sendFilesHelp:'Files are uploaded to the Hub and appear as pending items on receiving devices.',
-      chooseFiles:'Choose photos or files', fileLimit:'Up to 1 GiB per file; retained by the Hub for 24 hours', uploadAndSend:'Upload and send',
+      sendFiles:'Send files or photos', sendFilesHelp:'Send selections as files, or put one image directly on a computer clipboard.',
+      chooseFiles:'Choose photos or files', fileLimit:'Up to 1 GiB per file; retained by the Hub for 24 hours', sendAsFile:'Send as file',
+      sendToClipboard:'Send to clipboard', imageClipboardHelp:'Send to clipboard accepts one image up to 20 MiB after conversion.',
       inbox:'Inbox', inboxHelp:'Recent items sent to this device or broadcast by another device.', refresh:'Refresh', noInbox:'Nothing to receive yet',
       copy:'Copy', view:'View', download:'Download', saveImage:'View and save', copied:'Copied to the system clipboard',
       manualCopy:'Clipboard access was not granted. Long-press the text field to copy manually.',
@@ -47,6 +56,9 @@
       sent:n => n > 0 ? `Sent to ${n} device${n === 1 ? '' : 's'}` : 'Saved to the Hub; the target is currently offline',
       fileSelected:n => `${n} file${n === 1 ? '' : 's'} selected`, uploading:(i,n,name) => `Uploading ${i}/${n}: ${name}`,
       filesSent:(n,d) => `Sent ${n} file${n === 1 ? '' : 's'}; delivered to ${d} device${d === 1 ? '' : 's'}`,
+      preparingImage:'Preparing image…', imageTooLarge:'The converted image exceeds 20 MiB. Send it as a file instead.',
+      imageDimensionsTooLarge:'The image dimensions are too large. Send it as a file instead.',
+      imageUnsupported:'This image could not be read. Send it as a file instead.',
       loading:'Loading…', textItem:'Text', imageItem:'Image', fileItem:'File', from:(source,time) => `${source} · ${time}`,
       mobileDefault:'My phone', forgetting:'Forgetting device…', forgetFailed:'Could not forget this device. Try again.',
       sessionEnded:'This device was signed out and forgotten', unknownError:'An unknown error occurred'
@@ -90,6 +102,10 @@
     return /iphone|ipad|ipod/i.test(navigator.userAgent);
   }
 
+  function isAndroid() {
+    return /android/i.test(navigator.userAgent);
+  }
+
   function isMobileBrowser() {
     return /android|iphone|ipad|ipod/i.test(navigator.userAgent);
   }
@@ -98,13 +114,14 @@
     const available = !standaloneMode() && (state.installPrompt || isMobileBrowser());
     $('installBanner').hidden = !available;
     if (!available) return;
-    $('installHelp').textContent = state.installPrompt ? t('installHelp') : (isiOS() ? t('installIOSHelp') : t('installManualHelp'));
+    $('installHelp').textContent = state.installPrompt ? t('installHelp')
+      : (isiOS() ? t('installIOSHelp') : (isAndroid() && !window.isSecureContext ? t('installHTTPHelp') : t('installManualHelp')));
     $('installBtn').textContent = state.installPrompt ? t('installAction') : t('installGuide');
   }
 
   async function installApp() {
     if (!state.installPrompt) {
-      toast(isiOS() ? t('installIOSHelp') : t('installManualHelp'));
+      toast(isiOS() ? t('installIOSHelp') : (isAndroid() && !window.isSecureContext ? t('installHTTPHelp') : t('installManualHelp')));
       return;
     }
     const prompt = state.installPrompt;
@@ -275,13 +292,76 @@
       list.append(row);
     }
     $('sendFilesBtn').disabled = state.files.length === 0;
+    $('sendImageBtn').disabled = state.files.length !== 1 || !state.files[0].type.startsWith('image/');
     setStatus('fileStatus', state.files.length ? t('fileSelected', state.files.length) : '');
+  }
+
+  function imageElement(file) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const image = new Image();
+      image.onload = () => { URL.revokeObjectURL(url); resolve(image); };
+      image.onerror = () => { URL.revokeObjectURL(url); reject(new Error(t('imageUnsupported'))); };
+      image.src = url;
+    });
+  }
+
+  async function imageAsPNG(file) {
+    const image = await imageElement(file);
+    if (image.naturalWidth > 16384 || image.naturalHeight > 16384 || image.naturalWidth * image.naturalHeight > maxClipboardImagePixels) {
+      throw new Error(t('imageDimensionsTooLarge'));
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+    const context = canvas.getContext('2d');
+    if (!context || !canvas.width || !canvas.height) throw new Error(t('imageUnsupported'));
+    context.drawImage(image, 0, 0);
+    return new Promise((resolve, reject) => canvas.toBlob(blob => {
+      if (blob) resolve(blob);
+      else reject(new Error(t('imageUnsupported')));
+    }, 'image/png'));
+  }
+
+  function blobBase64(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).split(',', 2)[1] || '');
+      reader.onerror = () => reject(reader.error || new Error(t('imageUnsupported')));
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  async function sendImageToClipboard() {
+    if (state.files.length !== 1 || !state.files[0].type.startsWith('image/')) return;
+    const file = state.files[0];
+    $('sendImageBtn').disabled = true;
+    $('sendFilesBtn').disabled = true;
+    setStatus('fileStatus', t('preparingImage'));
+    try {
+      const png = await imageAsPNG(file);
+      if (png.size > maxClipboardImageBytes) throw new Error(t('imageTooLarge'));
+      const content = await blobBase64(png);
+      const result = await api('/api/send-image', jsonOptions({
+        content, name:file.name, source:currentDevice(), target:$('fileTarget').value
+      }));
+      setFiles([]);
+      $('fileInput').value = '';
+      setStatus('fileStatus', deliveryStatus(result), 'success');
+      await refreshInbox(false);
+    } catch (error) {
+      setStatus('fileStatus', error.message || t('imageUnsupported'), 'error');
+    } finally {
+      $('sendFilesBtn').disabled = state.files.length === 0;
+      $('sendImageBtn').disabled = state.files.length !== 1 || !state.files[0].type.startsWith('image/');
+    }
   }
 
   async function sendFiles() {
     if (!state.files.length) return;
     const files = state.files.slice();
     $('sendFilesBtn').disabled = true;
+    $('sendImageBtn').disabled = true;
     $('uploadProgress').hidden = false;
     let delivered = 0;
     try {
@@ -306,6 +386,7 @@
       setStatus('fileStatus', error.message, 'error');
     } finally {
       $('sendFilesBtn').disabled = state.files.length === 0;
+      $('sendImageBtn').disabled = state.files.length !== 1 || !state.files[0].type.startsWith('image/');
       setTimeout(() => { $('uploadProgress').hidden = true; }, 500);
     }
   }
@@ -519,6 +600,7 @@
     $('sendTextBtn').addEventListener('click', sendText);
     $('fileInput').addEventListener('change', event => setFiles(event.target.files));
     $('sendFilesBtn').addEventListener('click', sendFiles);
+    $('sendImageBtn').addEventListener('click', sendImageToClipboard);
     $('refreshBtn').addEventListener('click', () => refreshAll(true));
     $('closeDialog').addEventListener('click', () => $('itemDialog').close());
     $('dialogCopy').addEventListener('click', copyDialogText);

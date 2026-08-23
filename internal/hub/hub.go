@@ -174,6 +174,7 @@ func (h *Hub) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/inbox", h.handleMobileInbox)
 	mux.HandleFunc("/api/item", h.handleMobileItem)
 	mux.HandleFunc("/api/send-text", h.handleMobileText)
+	mux.HandleFunc("/api/send-image", h.handleMobileImage)
 	mux.HandleFunc("/api/send-file", h.handleMobileFile)
 	mux.HandleFunc("/mobile/", h.handleMobileAsset)
 	mux.HandleFunc("/", h.handleRoot)
