@@ -82,7 +82,7 @@ func (c *Client) dialWS() (*websocket.Conn, error) {
 	if c.token != "" {
 		u += "&token=" + url.QueryEscape(c.token)
 	}
-	d := websocket.Dialer{HandshakeTimeout: dialTimeout}
+	d := websocket.Dialer{HandshakeTimeout: dialTimeout, Proxy: nil}
 	conn, resp, err := d.Dial(u, nil)
 	if err != nil {
 		if resp != nil && resp.StatusCode == 401 {

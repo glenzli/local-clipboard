@@ -24,6 +24,11 @@ func authQuery(server, token string) string {
 	return u
 }
 
+var directHTTP = &http.Client{
+	Timeout:   6 * time.Hour,
+	Transport: &http.Transport{Proxy: nil},
+}
+
 func UploadFile(server, name, token, path string) (string, int64, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -44,8 +49,7 @@ func UploadFile(server, name, token, path string) (string, int64, error) {
 	}
 	req.ContentLength = size
 	req.Header.Set("Content-Type", "application/octet-stream")
-	client := &http.Client{Timeout: 6 * time.Hour}
-	resp, err := client.Do(req)
+	resp, err := directHTTP.Do(req)
 	if err != nil {
 		return "", 0, err
 	}
@@ -94,7 +98,7 @@ func DownloadFile(server, token, fid, outDir string) (string, error) {
 	if token != "" {
 		q += "&token=" + url.QueryEscape(token)
 	}
-	resp, err := http.Get("http://" + server + "/download?" + q)
+	resp, err := directHTTP.Get("http://" + server + "/download?" + q)
 	if err != nil {
 		return "", err
 	}
