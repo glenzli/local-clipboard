@@ -35,6 +35,7 @@ func main() {
 		name := fs.String("name", defaultName(), "device name")
 		token := fs.String("token", "", "shared token")
 		uiPort := fs.Int("ui-port", client.DefaultUIPort, "local UI port (0 = off)")
+		trayOn := fs.Bool("tray", true, "show tray icon (disable on headless linux)")
 		fs.Parse(os.Args[2:])
 		mustServer(server)
 		c := client.New(*server, *name, *token)
@@ -45,7 +46,12 @@ func main() {
 				}
 			}()
 		}
-		c.Run()
+		go c.Run()
+		if *trayOn {
+			client.RunTray(c, *uiPort)
+		} else {
+			select {}
+		}
 
 	case "send-clipboard":
 		fs := flag.NewFlagSet("send-clipboard", flag.ExitOnError)
