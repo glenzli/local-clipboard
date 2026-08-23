@@ -19,7 +19,7 @@ type Tray struct {
 }
 
 func (t *Tray) OnReady() {
-	systray.SetIcon(trayIcon())
+	systray.SetTemplateIcon(trayIcon(), trayIcon())
 	systray.SetTooltip("local-clipboard")
 
 	t.mStatus = systray.AddMenuItem("", "")
