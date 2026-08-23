@@ -1,6 +1,7 @@
 package client
 
 import (
+	"bytes"
 	"io"
 	"io/fs"
 	"net/http"
@@ -15,7 +16,7 @@ func TestEmbeddedConsoleLocalizationAssets(t *testing.T) {
 		t.Fatal(err)
 	}
 	index := string(sub)
-	for _, fragment := range []string{`src="/i18n.js"`, `data-locale="zh"`, `data-locale="en"`} {
+	for _, fragment := range []string{`src="/app-icon.png"`, `src="/i18n.js"`, `data-locale="zh"`, `data-locale="en"`, `class="history-row"`, `class="event-main"`} {
 		if !strings.Contains(index, fragment) {
 			t.Fatalf("embedded console is missing %q", fragment)
 		}
@@ -25,10 +26,34 @@ func TestEmbeddedConsoleLocalizationAssets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, fragment := range []string{"navigator.languages", "localStorage.getItem", "localStorage.setItem", "zh:", "en:"} {
+	for _, fragment := range []string{"navigator.languages", "localStorage.getItem", "localStorage.setItem", "stateApplied", "zh:", "en:"} {
 		if !strings.Contains(string(i18n), fragment) {
 			t.Fatalf("embedded localization runtime is missing %q", fragment)
 		}
+	}
+}
+
+func TestEmbeddedConsoleServesAppIcon(t *testing.T) {
+	icon, err := webFS.ReadFile("web/app-icon.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.HasPrefix(icon, []byte("\x89PNG\r\n\x1a\n")) {
+		t.Fatal("embedded app icon is not a PNG")
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:9101/app-icon.png", nil)
+	resp := httptest.NewRecorder()
+	http.FileServer(http.FS(mustWebSub(t))).ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.Code, http.StatusOK)
+	}
+	served, err := io.ReadAll(resp.Result().Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(served, icon) {
+		t.Fatal("served app icon differs from embedded asset")
 	}
 }
 

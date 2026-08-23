@@ -22,7 +22,6 @@
       clipboardContent: '（剪贴板内容）',
       fromPeer: '来自 {peer}',
       receive: '接收',
-      retry: '重试',
       noActiveTransfers: '没有进行中的传输',
       noHistory: '暂无记录',
       directionIn: '收',
@@ -35,7 +34,8 @@
       stateFailed: '失败',
       stateSending: '发送中',
       stateOffered: '待接收',
-      stateReceiving: '接收中'
+      stateReceiving: '接收中',
+      stateApplied: '已写入剪贴板'
     }),
     en: Object.freeze({
       documentTitle: 'Local Clipboard Console',
@@ -55,7 +55,6 @@
       clipboardContent: '(clipboard content)',
       fromPeer: 'From {peer}',
       receive: 'Receive',
-      retry: 'Retry',
       noActiveTransfers: 'No active transfers',
       noHistory: 'No transfer history',
       directionIn: 'In',
@@ -68,7 +67,8 @@
       stateFailed: 'Failed',
       stateSending: 'Sending',
       stateOffered: 'Pending',
-      stateReceiving: 'Receiving'
+      stateReceiving: 'Receiving',
+      stateApplied: 'Copied to clipboard'
     })
   });
 

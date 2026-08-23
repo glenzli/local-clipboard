@@ -2,13 +2,7 @@ package client
 
 import (
 	"encoding/base64"
-
-	"github.com/atotto/clipboard"
 )
-
-func ReadText() (string, error) { return clipboard.ReadAll() }
-
-func WriteText(s string) error { return clipboard.WriteAll(s) }
 
 func encodeBase64(b []byte) string { return base64.StdEncoding.EncodeToString(b) }
 

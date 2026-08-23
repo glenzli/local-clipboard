@@ -78,6 +78,7 @@ const (
 	StateSending   = "sending"
 	StateReceived  = "received"
 	StateReceiving = "receiving"
+	StateApplied   = "applied"
 )
 
 func (s *Store) Snapshot(events bool) map[string]any {

@@ -54,7 +54,7 @@ func (t *Tray) OnReady() {
 		select {
 		case <-mSend.ClickedCh:
 			go func() {
-				if err := SendCurrentClipboard(t.C, "", SendEventHooks{}); err != nil {
+				if err := SendCurrentClipboard(t.C, "", t.C.StoreHooks()); err != nil {
 					fmt.Println("[tray] send:", err)
 				}
 			}()

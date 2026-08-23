@@ -28,16 +28,25 @@ const (
 )
 
 type Client struct {
-	server string
-	name   string
-	token  string
-	store  *Store
+	server     string
+	name       string
+	token      string
+	store      *Store
+	writeText  func(string) error
+	writeImage func([]byte) error
 }
 
 var knownHostsMu sync.Mutex
 
 func New(server, name, token string) *Client {
-	return &Client{server: server, name: name, token: token, store: NewStore()}
+	return &Client{
+		server:     server,
+		name:       name,
+		token:      token,
+		store:      NewStore(),
+		writeText:  WriteText,
+		writeImage: WriteImage,
+	}
 }
 
 func (c *Client) Store() *Store { return c.store }
@@ -229,10 +238,12 @@ var writeMu sync.Mutex
 func (c *Client) handleText(msg proto.Message) {
 	writeMu.Lock()
 	defer writeMu.Unlock()
-	if err := WriteText(msg.Content); err != nil {
+	if err := c.writeText(msg.Content); err != nil {
+		c.recordClipboardEvent(msg.Source, proto.TypeText, int64(len(msg.Content)), StateFailed)
 		log.Printf("[%s] write text to clipboard: %v", c.name, err)
 		return
 	}
+	c.recordClipboardEvent(msg.Source, proto.TypeText, int64(len(msg.Content)), StateApplied)
 	log.Printf("[%s] <- text (%d bytes) from %s -> clipboard", c.name, len(msg.Content), msg.Source)
 }
 
@@ -241,15 +252,22 @@ func (c *Client) handleImage(msg proto.Message) {
 	defer writeMu.Unlock()
 	data, err := decodeBase64(msg.Content)
 	if err != nil {
+		c.recordClipboardEvent(msg.Source, proto.TypeImage, msg.Size, StateFailed)
 		log.Printf("[%s] bad image payload: %v", c.name, err)
 		return
 	}
-	if err := WriteImage(data); err != nil {
+	if err := c.writeImage(data); err != nil {
+		c.recordClipboardEvent(msg.Source, proto.TypeImage, int64(len(data)), StateFailed)
 		log.Printf("[%s] write image to clipboard: %v", c.name, err)
 		return
 	}
+	c.recordClipboardEvent(msg.Source, proto.TypeImage, int64(len(data)), StateApplied)
 	log.Printf("[%s] <- image (%d bytes) from %s -> clipboard", c.name, len(data), msg.Source)
 	notify(fmt.Sprintf("图片已就绪，可直接粘贴（来自 %s）", msg.Source))
+}
+
+func (c *Client) recordClipboardEvent(peer, kind string, size int64, state string) {
+	c.store.Add(&Event{Dir: "in", Kind: kind, Peer: peer, Size: size, State: state})
 }
 
 func (c *Client) handleFileNotice(msg proto.Message) {
