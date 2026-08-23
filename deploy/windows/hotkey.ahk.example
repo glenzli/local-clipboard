@@ -1,0 +1,5 @@
+; AutoHotkey v2 example — save as %LOCALAPPDATA%\local-clipboard\hotkey.ahk
+; and put a shortcut to it in shell:startup
+
+^!c::Run A_AppData "\local-clipboard\local-clipboard.exe send-clipboard"
+^!u::Run "http://127.0.0.1:9101"
