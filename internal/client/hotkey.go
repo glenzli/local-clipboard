@@ -64,12 +64,14 @@ func RegisterHotkey(c *Client, spec string) error {
 		if err == nil {
 			break
 		}
+		c.store.SetHotkey(false)
 		log.Printf("[hotkey] %v", err)
 		if attempt == 1 {
 			Notify("快捷键需要辅助功能权限：系统设置 → 隐私与安全性 → 辅助功能，勾选 local-clipboard 后将自动生效")
 		}
 		time.Sleep(15 * time.Second)
 	}
+	c.store.SetHotkey(true)
 	log.Printf("[hotkey] %s registered — press anywhere to send clipboard", strings.ToLower(spec))
 	go func() {
 		for range hk.Keydown() {

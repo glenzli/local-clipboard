@@ -21,10 +21,11 @@ type Event struct {
 }
 
 type Store struct {
-	mu      sync.Mutex
-	events  []*Event
-	pending map[string]*Event
-	connUp  bool
+	mu       sync.Mutex
+	events   []*Event
+	pending  map[string]*Event
+	connUp   bool
+	hotkeyUp bool
 }
 
 func NewStore() *Store {
@@ -41,6 +42,18 @@ func (s *Store) Connected() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.connUp
+}
+
+func (s *Store) SetHotkey(up bool) {
+	s.mu.Lock()
+	s.hotkeyUp = up
+	s.mu.Unlock()
+}
+
+func (s *Store) HotkeyUp() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.hotkeyUp
 }
 
 func (s *Store) Add(e *Event) {
@@ -70,7 +83,7 @@ const (
 func (s *Store) Snapshot(events bool) map[string]any {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	out := map[string]any{"connected": s.connUp}
+	out := map[string]any{"connected": s.connUp, "hotkey": s.hotkeyUp}
 	if !events {
 		return out
 	}

@@ -14,6 +14,7 @@ type Tray struct {
 	mStatus  *systray.MenuItem
 	mPending *systray.MenuItem
 	mRecvAll *systray.MenuItem
+	mHotkey  *systray.MenuItem
 }
 
 func (t *Tray) OnReady() {
@@ -22,6 +23,15 @@ func (t *Tray) OnReady() {
 
 	t.mStatus = systray.AddMenuItem("", "")
 	t.mStatus.Disable()
+	t.mHotkey = systray.AddMenuItem("", "")
+	if grant := grantItem(); grant != nil {
+		systray.AddSeparator()
+		go func() {
+			for range grant.ClickedCh {
+				openAccessibilitySettings()
+			}
+		}()
+	}
 	t.mPending = systray.AddMenuItem("", "")
 	t.mPending.Disable()
 	systray.AddSeparator()
@@ -63,6 +73,16 @@ func (t *Tray) refresh() {
 		t.mStatus.SetTitle("● connected")
 	} else {
 		t.mStatus.SetTitle("○ offline — reconnecting…")
+	}
+	if t.mHotkey != nil {
+		if t.C.store.HotkeyUp() {
+			t.mHotkey.SetTitle("⌘ hotkey active (ctrl+alt+c)")
+			t.mHotkey.Disable()
+		} else {
+			t.mHotkey.SetTitle("⚠ hotkey waiting for permission")
+			t.mHotkey.Enable()
+			t.mHotkey.SetTooltip("click to open accessibility settings")
+		}
 	}
 	n := 0
 	for _, e := range pendingSnapshot(t.C.store) {
