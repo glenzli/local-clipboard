@@ -1,5 +1,6 @@
 #!/bin/bash
 set -e
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 SERVER=${1:-$LOCALCLIP_SERVER}
 TOKEN=${2:-$LOCALCLIP_TOKEN}
 NAME=$3
@@ -18,8 +19,13 @@ case $(uname -m) in
 esac
 
 APP="$HOME/Applications/LocalClipboard.app"
-mkdir -p "$APP/Contents/MacOS"
-cp "$(dirname "$0")/$BINFILE" "$APP/Contents/MacOS/local-clipboard"
+PLIST_FILE="$HOME/Library/LaunchAgents/com.glenzli.local-clipboard.plist"
+launchctl unload "$PLIST_FILE" 2>/dev/null || true
+
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+rm -f "$APP/Contents/MacOS/local-clipboard.cstemp"
+cp "$SCRIPT_DIR/$BINFILE" "$APP/Contents/MacOS/local-clipboard"
+cp "$SCRIPT_DIR/LocalClipboard.icns" "$APP/Contents/Resources/LocalClipboard.icns"
 chmod +x "$APP/Contents/MacOS/local-clipboard"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
@@ -33,6 +39,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <string>LocalClipboard</string>
     <key>CFBundleExecutable</key>
     <string>local-clipboard</string>
+    <key>CFBundleIconFile</key>
+    <string>LocalClipboard.icns</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>LSUIElement</key>
@@ -43,19 +51,22 @@ PLIST
 # Sign with a stable identity if one exists, so TCC permissions (hotkey etc.)
 # survive reinstalls. Ad-hoc (-) changes fingerprint every build.
 SIGN_ID=$(security find-identity -v -p codesigning 2>/dev/null | grep -m1 '"[^"]*"' | sed 's/.*"\(.*\)".*/\1/')
-if [ -n "$SIGN_ID" ]; then
-  codesign --force --sign "$SIGN_ID" "$APP" && echo "signed with: $SIGN_ID"
+if [ -n "$SIGN_ID" ] && codesign --force --timestamp=none --sign "$SIGN_ID" "$APP"; then
+  echo "signed with: $SIGN_ID"
 else
-  codesign --force --sign - "$APP" && echo "WARNING: ad-hoc signed — you will need to re-grant permissions after each reinstall."
+  if [ -n "$SIGN_ID" ]; then
+    echo "WARNING: signing with '$SIGN_ID' failed; falling back to ad-hoc."
+  fi
+  codesign --force --sign - "$APP"
+  echo "WARNING: ad-hoc signed — you will need to re-grant permissions after each reinstall."
   echo "To fix permanently: Keychain Access -> Certificate Assistant -> Create Certificate ->"
   echo "  name 'localclipboard-dev', type: Code Signing. Then re-run this installer."
 fi
+codesign --verify --deep --strict "$APP"
 
 BIN="$APP/Contents/MacOS/local-clipboard"
-PLIST_FILE="$HOME/Library/LaunchAgents/com.glenzli.local-clipboard.plist"
 sed -e "s|__BIN__|$BIN|g" -e "s|__SERVER__|$SERVER|g" -e "s|__TOKEN__|$TOKEN|g" -e "s|__NAME__|$NAME|g" \
-  "$(dirname "$0")/com.glenzli.local-clipboard.plist.template" > "$PLIST_FILE"
-launchctl unload "$PLIST_FILE" 2>/dev/null || true
+  "$SCRIPT_DIR/com.glenzli.local-clipboard.plist.template" > "$PLIST_FILE"
 launchctl load "$PLIST_FILE"
 echo "installed as $APP and started."
 echo ""
