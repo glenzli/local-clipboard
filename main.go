@@ -142,6 +142,32 @@ func main() {
 		die(derr)
 		fmt.Printf("sent file %s via daemon\n", base(args[0]))
 
+	case "detect":
+		fs := flag.NewFlagSet("detect", flag.ExitOnError)
+		fs.Parse(os.Args[2:])
+		if refs, _ := client.ReadFileRefs(); len(refs) > 0 {
+			fmt.Printf("kind=file, %d item(s):\n", len(refs))
+			for _, p := range refs {
+				fmt.Println("  " + p)
+			}
+			return
+		}
+		msg, hint, err := client.DetectAndBuildClipboardMessage()
+		die(err)
+		if hint {
+			fmt.Println("text too large for inline sync")
+			return
+		}
+		preview := msg.Content
+		if msg.Type == proto.TypeImage {
+			fmt.Printf("kind=%s size=%d (binary)\n", msg.Type, msg.Size)
+			return
+		}
+		if len(preview) > 60 {
+			preview = preview[:60] + "..."
+		}
+		fmt.Printf("kind=%s size=%d content=%q\n", msg.Type, msg.Size, preview)
+
 	case "accept":
 		fs := flag.NewFlagSet("accept", flag.ExitOnError)
 		server := fs.String("server", "", "")
@@ -170,6 +196,7 @@ func usage() {
   send-clipboard -server nas:9100                push local clipboard (text/screenshot) [-to dev]
   send-text -server nas:9100 "hello"             push raw text
   send-file -server nas:9100 f.pdf               upload + announce file [-to dev]
+  detect                                         inspect what the clipboard resolves to
   accept -server nas:9100 <file-id>              download an offered file`)
 }
 
