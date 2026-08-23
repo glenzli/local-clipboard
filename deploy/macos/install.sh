@@ -40,7 +40,16 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </dict>
 </plist>
 PLIST
-codesign --force --sign - "$APP" 2>/dev/null || true
+# Sign with a stable identity if one exists, so TCC permissions (hotkey etc.)
+# survive reinstalls. Ad-hoc (-) changes fingerprint every build.
+SIGN_ID=$(security find-identity -v -p codesigning 2>/dev/null | grep -m1 '"[^"]*"' | sed 's/.*"\(.*\)".*/\1/')
+if [ -n "$SIGN_ID" ]; then
+  codesign --force --sign "$SIGN_ID" "$APP" && echo "signed with: $SIGN_ID"
+else
+  codesign --force --sign - "$APP" && echo "WARNING: ad-hoc signed — you will need to re-grant permissions after each reinstall."
+  echo "To fix permanently: Keychain Access -> Certificate Assistant -> Create Certificate ->"
+  echo "  name 'localclipboard-dev', type: Code Signing. Then re-run this installer."
+fi
 
 BIN="$APP/Contents/MacOS/local-clipboard"
 PLIST_FILE="$HOME/Library/LaunchAgents/com.glenzli.local-clipboard.plist"
