@@ -5,8 +5,11 @@
   const strings = {
     zh: {
       documentTitle:'Local Clipboard 手机收发', mobileHub:'NAS Hub · 手机收发', connectHub:'连接 NAS Hub',
-      tokenHelp:'输入共享令牌后建立此浏览器的安全会话；令牌不会写入 URL。', sharedToken:'共享令牌',
-      tokenPlaceholder:'输入 LOCALCLIP_TOKEN', connect:'连接', thisDevice:'此手机的设备名称', disconnect:'断开会话',
+      installTitle:'安装 Local Clipboard', installHelp:'添加到主屏幕，之后可像 App 一样直接打开。',
+      installIOSHelp:'点击浏览器的分享按钮，然后选择“添加到主屏幕”。',
+      installManualHelp:'打开浏览器菜单，选择“添加到主屏幕”或“安装应用”。', installAction:'安装', installGuide:'查看方法', installed:'已安装到设备',
+      tokenHelp:'首次输入共享令牌；信任后 Hub 重启也无需再次输入。令牌不会写入 URL 或浏览器存储。', sharedToken:'共享令牌',
+      tokenPlaceholder:'输入 LOCALCLIP_TOKEN', trustDevice:'信任此设备', connect:'连接', thisDevice:'此手机的设备名称', disconnect:'取消信任',
       connected:'已连接', onlineDevices:n => `${n} 台桌面设备在线`, send:'发送', receive:'接收', sendText:'发送文本',
       sendTextHelp:'粘贴内容并明确发送到目标设备的剪贴板。', targetDevice:'目标设备', allDevices:'所有在线设备',
       textContent:'文本内容', textPlaceholder:'在这里长按粘贴，或使用下方按钮', paste:'从剪贴板粘贴',
@@ -20,12 +23,16 @@
       fileSelected:n => `已选择 ${n} 个文件`, uploading:(i,n,name) => `正在上传 ${i}/${n}：${name}`,
       filesSent:(n,d) => `已发送 ${n} 个文件，共投递到 ${d} 台设备`, loading:'正在加载…',
       textItem:'文本内容', imageItem:'图片', fileItem:'文件', from:(source,time) => `${source} · ${time}`,
-      mobileDefault:'我的手机', sessionEnded:'会话已断开', unknownError:'发生未知错误'
+      mobileDefault:'我的手机', forgetting:'正在取消信任…', forgetFailed:'取消信任失败，请稍后重试',
+      sessionEnded:'此设备已退出并取消信任', unknownError:'发生未知错误'
     },
     en: {
       documentTitle:'Local Clipboard Mobile', mobileHub:'NAS Hub · Mobile transfer', connectHub:'Connect to NAS Hub',
-      tokenHelp:'Enter the shared token to create a browser session. The token is never placed in the URL.', sharedToken:'Shared token',
-      tokenPlaceholder:'Enter LOCALCLIP_TOKEN', connect:'Connect', thisDevice:'This phone’s device name', disconnect:'Disconnect',
+      installTitle:'Install Local Clipboard', installHelp:'Add it to your home screen and open it like an app.',
+      installIOSHelp:'Use the browser Share menu, then choose Add to Home Screen.',
+      installManualHelp:'Open the browser menu and choose Add to Home screen or Install app.', installAction:'Install', installGuide:'View steps', installed:'Installed on this device',
+      tokenHelp:'Enter the shared token once. A trusted device stays signed in after Hub restarts; the token is never stored in the URL or browser.', sharedToken:'Shared token',
+      tokenPlaceholder:'Enter LOCALCLIP_TOKEN', trustDevice:'Trust this device', connect:'Connect', thisDevice:'This phone’s device name', disconnect:'Forget device',
       connected:'Connected', onlineDevices:n => `${n} desktop device${n === 1 ? '' : 's'} online`, send:'Send', receive:'Receive',
       sendText:'Send text', sendTextHelp:'Paste content and explicitly send it to a target device’s clipboard.',
       targetDevice:'Target device', allDevices:'All online devices', textContent:'Text',
@@ -41,12 +48,13 @@
       fileSelected:n => `${n} file${n === 1 ? '' : 's'} selected`, uploading:(i,n,name) => `Uploading ${i}/${n}: ${name}`,
       filesSent:(n,d) => `Sent ${n} file${n === 1 ? '' : 's'}; delivered to ${d} device${d === 1 ? '' : 's'}`,
       loading:'Loading…', textItem:'Text', imageItem:'Image', fileItem:'File', from:(source,time) => `${source} · ${time}`,
-      mobileDefault:'My phone', sessionEnded:'Session disconnected', unknownError:'An unknown error occurred'
+      mobileDefault:'My phone', forgetting:'Forgetting device…', forgetFailed:'Could not forget this device. Try again.',
+      sessionEnded:'This device was signed out and forgotten', unknownError:'An unknown error occurred'
     }
   };
 
   const state = {
-    locale: preferredLocale(), authenticated:false, online:[], files:[], items:[], poller:null, dialogURL:''
+    locale: preferredLocale(), authenticated:false, online:[], files:[], items:[], poller:null, dialogURL:'', installPrompt:null
   };
 
   function preferredLocale() {
@@ -71,6 +79,49 @@
     renderConnection();
     renderFiles();
     renderInbox();
+    renderInstall();
+  }
+
+  function standaloneMode() {
+    return window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  }
+
+  function isiOS() {
+    return /iphone|ipad|ipod/i.test(navigator.userAgent);
+  }
+
+  function isMobileBrowser() {
+    return /android|iphone|ipad|ipod/i.test(navigator.userAgent);
+  }
+
+  function renderInstall() {
+    const available = !standaloneMode() && (state.installPrompt || isMobileBrowser());
+    $('installBanner').hidden = !available;
+    if (!available) return;
+    $('installHelp').textContent = state.installPrompt ? t('installHelp') : (isiOS() ? t('installIOSHelp') : t('installManualHelp'));
+    $('installBtn').textContent = state.installPrompt ? t('installAction') : t('installGuide');
+  }
+
+  async function installApp() {
+    if (!state.installPrompt) {
+      toast(isiOS() ? t('installIOSHelp') : t('installManualHelp'));
+      return;
+    }
+    const prompt = state.installPrompt;
+    state.installPrompt = null;
+    let accepted = false;
+    try {
+      await prompt.prompt();
+      const choice = await prompt.userChoice;
+      accepted = choice.outcome === 'accepted';
+    } catch (_) {
+      toast(t('installManualHelp'));
+    }
+    if (accepted) {
+      $('installBanner').hidden = true;
+    } else {
+      renderInstall();
+    }
   }
 
   async function api(url, options = {}) {
@@ -430,17 +481,33 @@
       event.preventDefault();
       setStatus('authStatus', t('connecting'));
       try {
-        const response = await fetch('/api/session', jsonOptions({token:$('tokenInput').value}));
+        const response = await fetch('/api/session', jsonOptions({
+          token:$('tokenInput').value,
+          trust:$('trustDevice').checked,
+          device:currentDevice()
+        }));
         if (!response.ok) throw new Error(t('authFailed'));
         $('tokenInput').value = '';
         setStatus('authStatus', '');
         await refreshAll(true);
       } catch (error) { setStatus('authStatus', error.message, 'error'); }
     });
+    $('installBtn').addEventListener('click', installApp);
     $('logoutBtn').addEventListener('click', async () => {
-      try { await fetch('/api/session', {method:'DELETE', credentials:'same-origin'}); } catch (_) {}
-      showAuth();
-      setStatus('authStatus', t('sessionEnded'));
+      const button = $('logoutBtn');
+      button.disabled = true;
+      button.textContent = t('forgetting');
+      try {
+        const response = await fetch('/api/session', {method:'DELETE', credentials:'same-origin'});
+        if (!response.ok) throw new Error(t('forgetFailed'));
+        showAuth();
+        setStatus('authStatus', t('sessionEnded'));
+      } catch (error) {
+        toast(error.message || t('forgetFailed'));
+      } finally {
+        button.disabled = false;
+        button.textContent = t('disconnect');
+      }
     });
     $('deviceName').addEventListener('change', () => {
       $('deviceName').value = currentDevice();
@@ -476,6 +543,17 @@
       showAuth();
     }
   }
+
+  window.addEventListener('beforeinstallprompt', event => {
+    event.preventDefault();
+    state.installPrompt = event;
+    renderInstall();
+  });
+  window.addEventListener('appinstalled', () => {
+    state.installPrompt = null;
+    $('installBanner').hidden = true;
+    toast(t('installed'));
+  });
 
   start();
 })();

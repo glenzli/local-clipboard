@@ -1,7 +1,9 @@
 package hub
 
 import (
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"embed"
 	"encoding/hex"
@@ -22,6 +24,7 @@ import (
 const (
 	mobileSessionCookie = "localclip_session"
 	mobileSessionTTL    = 30 * 24 * time.Hour
+	mobileTrustedTTL    = 400 * 24 * time.Hour
 	maxMobileText       = 1 << 20
 	maxMobileJSON       = maxMobileText + (8 << 10)
 	maxInboxItems       = 50
@@ -70,7 +73,11 @@ func (h *Hub) serveMobileFile(w http.ResponseWriter, name string, cache bool) {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
-	if contentType := mime.TypeByExtension(filepath.Ext(name)); contentType != "" {
+	contentType := mime.TypeByExtension(filepath.Ext(name))
+	if filepath.Ext(name) == ".webmanifest" {
+		contentType = "application/manifest+json"
+	}
+	if contentType != "" {
 		w.Header().Set("Content-Type", contentType)
 	}
 	if cache {
@@ -94,7 +101,9 @@ func (h *Hub) handleMobileSession(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodPost:
 		var req struct {
-			Token string `json:"token"`
+			Token  string `json:"token"`
+			Trust  bool   `json:"trust"`
+			Device string `json:"device"`
 		}
 		if !decodeJSON(w, r, 8<<10, &req) {
 			return
@@ -108,23 +117,39 @@ func (h *Hub) handleMobileSession(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "could not create session", http.StatusInternalServerError)
 			return
 		}
-		expires := time.Now().Add(mobileSessionTTL)
+		now := time.Now()
+		expires := now.Add(mobileSessionTTL)
+		if req.Trust {
+			expires = now.Add(mobileTrustedTTL)
+		}
+		key := h.mobileCredentialKey(id)
+		if req.Trust {
+			if err := h.mobileTrust.remember(key, req.Device, now, expires); err != nil {
+				http.Error(w, "could not trust this device", http.StatusInternalServerError)
+				return
+			}
+		}
 		h.mobileMu.Lock()
 		if h.mobileSessions == nil {
 			h.mobileSessions = make(map[string]time.Time)
 		}
-		h.mobileSessions[id] = expires
+		h.mobileSessions[key] = expires
 		h.mobileMu.Unlock()
-		http.SetCookie(w, mobileCookie(id, expires, secureRequest(r)))
-		writeJSON(w, http.StatusOK, map[string]any{"authenticated": true})
+		http.SetCookie(w, mobileCookie(id, expires, secureRequest(r), req.Trust))
+		writeJSON(w, http.StatusOK, map[string]any{"authenticated": true, "trusted": req.Trust})
 
 	case http.MethodDelete:
 		if cookie, err := r.Cookie(mobileSessionCookie); err == nil {
+			key := h.mobileCredentialKey(cookie.Value)
+			if err := h.mobileTrust.forget(key, time.Now()); err != nil {
+				http.Error(w, "could not forget this device", http.StatusInternalServerError)
+				return
+			}
 			h.mobileMu.Lock()
-			delete(h.mobileSessions, cookie.Value)
+			delete(h.mobileSessions, key)
 			h.mobileMu.Unlock()
 		}
-		http.SetCookie(w, mobileCookie("", time.Unix(1, 0), secureRequest(r)))
+		http.SetCookie(w, mobileCookie("", time.Unix(1, 0), secureRequest(r), true))
 		w.WriteHeader(http.StatusNoContent)
 
 	default:
@@ -138,36 +163,49 @@ func (h *Hub) mobileSessionAuthorized(r *http.Request) bool {
 	if err != nil || cookie.Value == "" {
 		return false
 	}
+	key := h.mobileCredentialKey(cookie.Value)
 	now := time.Now()
 	h.mobileMu.Lock()
-	defer h.mobileMu.Unlock()
-	expires, ok := h.mobileSessions[cookie.Value]
-	if !ok {
-		return false
+	expires, ok := h.mobileSessions[key]
+	if ok && now.After(expires) {
+		delete(h.mobileSessions, key)
+		ok = false
 	}
-	if now.After(expires) {
-		delete(h.mobileSessions, cookie.Value)
-		return false
+	if ok {
+		h.mobileSessions[key] = now.Add(mobileSessionTTL)
 	}
-	h.mobileSessions[cookie.Value] = now.Add(mobileSessionTTL)
-	return true
+	h.mobileMu.Unlock()
+	return ok || h.mobileTrust.valid(key, now)
 }
 
-func mobileCookie(value string, expires time.Time, secure bool) *http.Cookie {
-	maxAge := int(time.Until(expires).Seconds())
+func (h *Hub) mobileCredentialKey(value string) string {
+	mac := hmac.New(sha256.New, []byte(h.token))
+	mac.Write([]byte("local-clipboard/mobile-device/v1\x00"))
+	mac.Write([]byte(value))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+func mobileCookie(value string, expires time.Time, secure, persistent bool) *http.Cookie {
+	maxAge := 0
+	if persistent {
+		maxAge = int(time.Until(expires).Seconds())
+	}
 	if value == "" {
 		maxAge = -1
 	}
-	return &http.Cookie{
+	cookie := &http.Cookie{
 		Name:     mobileSessionCookie,
 		Value:    value,
 		Path:     "/",
-		Expires:  expires,
 		MaxAge:   maxAge,
 		HttpOnly: true,
 		Secure:   secure,
 		SameSite: http.SameSiteStrictMode,
 	}
+	if persistent || value == "" {
+		cookie.Expires = expires
+	}
+	return cookie
 }
 
 func randomMobileSessionID() (string, error) {

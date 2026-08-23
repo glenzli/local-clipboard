@@ -4,8 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#f3f6fa">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Local Clipboard">
   <title>Local Clipboard Mobile</title>
   <link rel="icon" href="/mobile/app-icon.png">
+  <link rel="apple-touch-icon" href="/mobile/icon-192.png">
+  <link rel="manifest" href="/mobile/manifest.webmanifest">
   <link rel="stylesheet" href="/mobile/app.css">
 </head>
 <body>
@@ -25,6 +31,14 @@
     </nav>
   </header>
 
+  <section class="install-banner card compact" id="installBanner" hidden>
+    <div class="install-copy">
+      <strong data-i18n="installTitle"></strong>
+      <small id="installHelp"></small>
+    </div>
+    <button class="quiet" type="button" id="installBtn" data-i18n="installAction"></button>
+  </section>
+
   <section class="card auth-card" id="authCard" hidden>
     <div class="section-heading">
       <div>
@@ -33,10 +47,16 @@
       </div>
     </div>
     <form id="authForm" class="auth-form">
-      <label class="field grow">
-        <span data-i18n="sharedToken"></span>
-        <input id="tokenInput" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" data-i18n-placeholder="tokenPlaceholder">
-      </label>
+      <div class="auth-fields grow">
+        <label class="field">
+          <span data-i18n="sharedToken"></span>
+          <input id="tokenInput" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" data-i18n-placeholder="tokenPlaceholder">
+        </label>
+        <label class="check-field">
+          <input id="trustDevice" type="checkbox" checked>
+          <span data-i18n="trustDevice"></span>
+        </label>
+      </div>
       <button class="primary" type="submit" data-i18n="connect"></button>
     </form>
     <p class="form-status" id="authStatus" role="status"></p>

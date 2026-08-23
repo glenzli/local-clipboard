@@ -86,6 +86,7 @@ type Hub struct {
 
 	mobileMu       sync.Mutex
 	mobileSessions map[string]time.Time
+	mobileTrust    *mobileTrustStore
 }
 
 func New(token string) (*Hub, error) {
@@ -100,6 +101,11 @@ func New(token string) (*Hub, error) {
 	if err != nil {
 		return nil, err
 	}
+	mobileTrust, err := loadMobileTrustStore(filepath.Join(root, mobileTrustFile))
+	if err != nil {
+		log.Printf("[hub] trusted mobile devices unavailable; requiring token again: %v", err)
+		mobileTrust = emptyMobileTrustStore(filepath.Join(root, mobileTrustFile))
+	}
 	h := &Hub{
 		upgrader:       websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }},
 		token:          token,
@@ -107,6 +113,7 @@ func New(token string) (*Hub, error) {
 		storeDir:       filepath.Join(root, "files"),
 		peers:          make(map[*peer]struct{}),
 		mobileSessions: make(map[string]time.Time),
+		mobileTrust:    mobileTrust,
 	}
 	go h.cleanLoop()
 	log.Printf("[hub] instance %s", short(id))

@@ -3,6 +3,7 @@ package hub
 import (
 	"bytes"
 	"encoding/json"
+	"image/png"
 	"io"
 	"mime"
 	"net/http"
@@ -31,7 +32,7 @@ func TestMobileWebAndStatusCompatibility(t *testing.T) {
 	if csp := pageResp.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "frame-ancestors 'none'") {
 		t.Fatalf("mobile page Content-Security-Policy = %q", csp)
 	}
-	for _, fragment := range []string{`/mobile/app.css`, `/mobile/app.js`, `id="sendPanel"`, `id="receivePanel"`} {
+	for _, fragment := range []string{`/mobile/app.css`, `/mobile/app.js`, `/mobile/manifest.webmanifest`, `id="installBanner"`, `id="trustDevice"`, `id="sendPanel"`, `id="receivePanel"`} {
 		if !strings.Contains(pageResp.Body.String(), fragment) {
 			t.Fatalf("mobile page missing %q", fragment)
 		}
@@ -40,8 +41,43 @@ func TestMobileWebAndStatusCompatibility(t *testing.T) {
 	assetReq := httptest.NewRequest(http.MethodGet, "http://hub.local/mobile/app.js", nil)
 	assetResp := httptest.NewRecorder()
 	mux.ServeHTTP(assetResp, assetReq)
-	if assetResp.Code != http.StatusOK || !strings.Contains(assetResp.Body.String(), "sendFiles") {
+	if assetResp.Code != http.StatusOK || !strings.Contains(assetResp.Body.String(), "sendFiles") || !strings.Contains(assetResp.Body.String(), "forgetFailed") {
 		t.Fatalf("mobile JavaScript asset was not served: status=%d", assetResp.Code)
+	}
+
+	manifestReq := httptest.NewRequest(http.MethodGet, "http://hub.local/mobile/manifest.webmanifest", nil)
+	manifestResp := httptest.NewRecorder()
+	mux.ServeHTTP(manifestResp, manifestReq)
+	if manifestResp.Code != http.StatusOK || !strings.Contains(manifestResp.Header().Get("Content-Type"), "manifest") {
+		t.Fatalf("web app manifest response: status=%d content-type=%q", manifestResp.Code, manifestResp.Header().Get("Content-Type"))
+	}
+	var manifest struct {
+		StartURL string `json:"start_url"`
+		Scope    string `json:"scope"`
+		Display  string `json:"display"`
+		Icons    []struct {
+			Source string `json:"src"`
+			Sizes  string `json:"sizes"`
+		} `json:"icons"`
+	}
+	if err := json.NewDecoder(manifestResp.Body).Decode(&manifest); err != nil {
+		t.Fatal(err)
+	}
+	if manifest.StartURL != "/" || manifest.Scope != "/" || manifest.Display != "standalone" || len(manifest.Icons) != 2 {
+		t.Fatalf("unexpected web app manifest: %+v", manifest)
+	}
+
+	for _, icon := range []struct {
+		path string
+		size int
+	}{{"/mobile/icon-192.png", 192}, {"/mobile/icon-512.png", 512}} {
+		iconReq := httptest.NewRequest(http.MethodGet, "http://hub.local"+icon.path, nil)
+		iconResp := httptest.NewRecorder()
+		mux.ServeHTTP(iconResp, iconReq)
+		config, err := png.DecodeConfig(bytes.NewReader(iconResp.Body.Bytes()))
+		if iconResp.Code != http.StatusOK || err != nil || config.Width != icon.size || config.Height != icon.size {
+			t.Fatalf("PWA icon %s: status=%d size=%dx%d err=%v", icon.path, iconResp.Code, config.Width, config.Height, err)
+		}
 	}
 
 	statusReq := httptest.NewRequest(http.MethodGet, "http://hub.local/", nil)
@@ -250,12 +286,26 @@ func TestMobileFileUploadAnnounceAndCookieDownload(t *testing.T) {
 
 func newMobileTestHub(t *testing.T, token string) *Hub {
 	t.Helper()
+	return newMobileTestHubAt(t, token, t.TempDir())
+}
+
+func newMobileTestHubAt(t *testing.T, token, root string) *Hub {
+	t.Helper()
+	storeDir := filepath.Join(root, "files")
+	if err := os.MkdirAll(storeDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	trust, err := loadMobileTrustStore(filepath.Join(root, mobileTrustFile))
+	if err != nil {
+		t.Fatal(err)
+	}
 	return &Hub{
 		token:          token,
 		instID:         "test-instance",
-		storeDir:       t.TempDir(),
+		storeDir:       storeDir,
 		peers:          make(map[*peer]struct{}),
 		mobileSessions: make(map[string]time.Time),
+		mobileTrust:    trust,
 	}
 }
 

@@ -188,8 +188,10 @@ $HOME/Applications/LocalClipboard.app/Contents/MacOS/local-clipboard send-clipbo
 
 ### 手机收发页面
 
-手机与 NAS 位于同一可信网络时，打开 `http://nas-ip:9100/`。输入一次 Hub 的共享令牌
-后，Hub 会为当前浏览器建立 HttpOnly 会话；共享令牌不会写入 URL 或浏览器存储。
+手机与 NAS 位于同一可信网络时，打开 `http://nas-ip:9100/`。首次输入 Hub 的共享令牌并
+选择“信任此设备”后，Hub 会为当前浏览器建立可跨 Hub 重启恢复的 HttpOnly 会话；共享
+令牌不会写入 URL、cookie 或浏览器存储。只有清除浏览器数据、取消信任、凭证过期或
+修改 Hub 共享令牌后，才需要重新输入。
 
 - **发送**：选择在线目标设备，粘贴文本，或选择照片和文件上传。文本会进入桌面端
   剪贴板，文件会成为桌面端的待接收项目。
@@ -198,10 +200,14 @@ $HOME/Applications/LocalClipboard.app/Contents/MacOS/local-clipboard send-clipbo
 - 手机设备名保存在当前浏览器中；桌面端可以将它填入目标设备名进行定向发送，留空
   则按现有规则广播。
 - 收件箱复用 Hub 的有界内存历史，Hub 重启后会清空；中转文件仍按 24 小时规则删除。
+- 页面包含可安装的 Web App Manifest。Android/桌面 Chrome 可以使用页面安装提示或浏览器
+  菜单安装；iPhone 使用分享菜单中的“添加到主屏幕”。从主屏幕图标启动后会以独立窗口
+  显示，不再显示普通浏览器地址栏。
 
 页面支持中文和英文。移动浏览器在普通 HTTP 下可能不允许网页直接读写系统剪贴板；
 此时页面会保留可选择文本，并提示使用系统的长按粘贴或复制。通过可信 HTTPS 反向代理
-访问 Hub 可以获得更完整的剪贴板按钮体验。
+访问 Hub 可以获得更完整的剪贴板按钮体验，并让 Chrome 稳定识别和安装 PWA。普通
+`http://nas-ip:9100` 下仍可从浏览器菜单尝试添加到主屏幕，但安装能力取决于平台。
 
 ### CLI
 
@@ -241,7 +247,9 @@ serve -addr :9100 [-token s]
 - 共享令牌用于授权 Hub 的 HTTP 和 WebSocket 请求。客户端通过 `X-Token` 请求头
   发送令牌，不会把令牌放在 URL 中。
 - 手机页面用共享令牌换取随机、HttpOnly、SameSite 会话 cookie；cookie 不包含共享
-  令牌，Hub 重启后会话失效，需要重新连接。
+  令牌。选择“信任此设备”时，Hub 只把凭证的带密钥摘要、设备名和有效期写入
+  `mobile_devices.json`，不会持久化原始 cookie 或共享令牌。可信设备最长保留 400 天，
+  Hub 重启后仍然有效，最多记录 128 台设备；取消信任或修改共享令牌会使对应凭证失效。
 - 第一次成功连接时，客户端会固定 Hub 实例 ID。后续身份变化会被拒绝，直到用户
   主动删除本地 known-hosts 记录。这是 TOFU，不是证书机构。
 - Hub 使用明文 HTTP 和 WebSocket，**不提供加密**。不要把 `9100` 端口暴露到公网；
@@ -488,9 +496,11 @@ non-loopback origins.
 ### Mobile transfer page
 
 When the phone and NAS are on the same trusted network, open
-`http://nas-ip:9100/`. Enter the hub's shared token once; the hub exchanges it
-for an HttpOnly browser session, so the shared token is not stored in the URL
-or browser storage.
+`http://nas-ip:9100/`. Enter the hub's shared token and select **Trust this
+device**. The hub creates an HttpOnly browser session that survives hub
+restarts; the shared token is never stored in the URL, cookie, or browser
+storage. You only need to enter it again after clearing browser data,
+forgetting the device, credential expiry, or a hub shared-token change.
 
 - **Send:** choose an online target, paste text, or select photos and files.
   Text lands in the desktop clipboard; files become pending offers.
@@ -501,11 +511,18 @@ or browser storage.
   that name for targeted delivery, or leave the target empty to broadcast.
 - The inbox reuses the hub's bounded in-memory history and is cleared when the
   hub restarts. Relayed files still expire after 24 hours.
+- The page includes an installable Web App Manifest. Android and desktop Chrome
+  can use the page prompt or browser menu; on iPhone, use **Add to Home Screen**
+  from the Share menu. Launching the home-screen icon uses a standalone window
+  without the normal browser address bar.
 
 The page supports Chinese and English. Mobile browsers may deny direct system
 clipboard access over plain HTTP; the page then keeps the text selectable and
 prompts for the native long-press Paste or Copy action. A trusted HTTPS reverse
-proxy provides the complete clipboard-button experience.
+proxy provides the complete clipboard-button experience and lets Chrome
+reliably recognize and install the PWA. On plain `http://nas-ip:9100`, adding
+the page from the browser menu may still work, but installation is platform-
+dependent.
 
 ### CLI
 
@@ -546,8 +563,12 @@ must match the receiver's device name.
 - The shared token authorizes hub HTTP and WebSocket requests. Clients send it
   in the `X-Token` header rather than in URLs.
 - The mobile page exchanges the shared token for a random HttpOnly, SameSite
-  session cookie. The cookie does not contain the shared token and is invalid
-  after a hub restart.
+  session cookie. The cookie does not contain the shared token. With **Trust
+  this device** enabled, the hub persists only a keyed credential digest,
+  device name, and expiry in `mobile_devices.json`; neither the raw cookie nor
+  shared token is written to disk. Trust lasts up to 400 days and survives hub
+  restarts, with at most 128 remembered devices. Forgetting the device or
+  changing the shared token invalidates it.
 - The first successful connection pins the hub instance ID. Later identity
   changes are rejected until the local known-hosts record is deliberately
   removed. This is TOFU, not a certificate authority.
