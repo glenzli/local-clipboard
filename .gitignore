@@ -1,3 +1,4 @@
 local-clipboard
 dist/
 *.log
+make.local.mk
