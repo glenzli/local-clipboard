@@ -124,7 +124,9 @@ $env:LOCALCLIP_TOKEN = "<shared-token>"
 .\deploy\windows\install.ps1
 ```
 
-安装器会注册登录时运行的计划任务，并启动客户端。
+安装器会注册当前用户的登录启动项，并启动客户端。
+共享令牌会使用当前 Windows 用户的 DPAPI 加密保存在本地，不会出现在计划任务
+或客户端命令行中。
 
 ### 自动发布
 
@@ -392,7 +394,9 @@ $env:LOCALCLIP_TOKEN = "<shared-token>"
 .\deploy\windows\install.ps1
 ```
 
-The installer registers an on-logon scheduled task and starts the client.
+The installer registers a current-user logon startup entry and starts the client.
+The shared token is encrypted locally with DPAPI for the current Windows user;
+it is not exposed in the scheduled task or client command line.
 
 ### Automated rollout
 

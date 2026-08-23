@@ -33,7 +33,7 @@ func main() {
 		fs := flag.NewFlagSet("run", flag.ExitOnError)
 		server := fs.String("server", "", "hub address, e.g. nas:9100")
 		name := fs.String("name", defaultName(), "device name")
-		token := fs.String("token", "", "shared token")
+		token := fs.String("token", os.Getenv("LOCALCLIP_TOKEN"), "shared token (or LOCALCLIP_TOKEN env)")
 		uiPort := fs.Int("ui-port", client.DefaultUIPort, "local UI port (0 = off)")
 		trayOn := fs.Bool("tray", true, "show tray icon (disable on headless linux)")
 		hotkeySpec := fs.String("hotkey", client.DefaultHotkey, "global hotkey to copy and send (empty = off)")
