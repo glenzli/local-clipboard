@@ -175,25 +175,30 @@ func SendCurrentClipboard(c *Client, to string, hooks SendEventHooks) error {
 	done(ev)
 	return nil
 }
+func DetectAndBuildClipboardMessage() (*proto.Message, bool, error) {
+	// Text wins over image: many apps attach a rendered TIFF preview alongside
+	// copied rich text. A real screenshot has no text flavor, so it still
+	// lands in the image branch below.
+	text, _ := ReadText()
+	if text != "" {
+		m := proto.NewMessage("", proto.TypeText)
+		m.Size = int64(len(text))
+		if m.Size > maxInlineText {
+			return nil, true, fmt.Errorf("text too large for inline sync (%s); put it in a file and use send-file", humanBytes(m.Size))
+		}
+		m.Content = text
+		return m, false, nil
+	}
 
-func DetectAndBuildClipboardMessage() (*proto.Message, bool, error) {	img, imgErr := ReadImage()
-	if imgErr == nil && len(img) > 0 {
+	img, err := ReadImage()
+	if err == nil && len(img) > 0 {
 		m := proto.NewMessage("", proto.TypeImage)
 		m.Size = int64(len(img))
 		m.Content = encodeBase64(img)
 		return m, false, nil
 	}
-	text, txtErr := ReadText()
-	if txtErr != nil || text == "" {
-		return nil, false, fmt.Errorf("clipboard is empty (image read also failed: %v)", imgErr)
-	}
-	m := proto.NewMessage("", proto.TypeText)
-	m.Size = int64(len(text))
-	if m.Size > maxInlineText {
-		return nil, true, fmt.Errorf("text too large for inline sync (%s); put it in a file and use send-file", humanBytes(m.Size))
-	}
-	m.Content = text
-	return m, false, nil
+
+	return nil, false, fmt.Errorf("clipboard is empty (image read failed: %v)", err)
 }
 
 func humanBytes(n int64) string {
