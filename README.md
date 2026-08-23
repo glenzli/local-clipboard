@@ -80,9 +80,10 @@ Without `-server` they route through the local daemon (progress shows in the UI)
 The daemon registers a **global hotkey in-process**: `Ctrl+Alt+C` sends the current clipboard
 (macOS maps Option to Alt — same muscle memory on every platform). Change it with `-hotkey ctrl+shift+d`, disable with `-hotkey ""`.
 
-macOS first run: grant Accessibility when prompted (System Settings → Privacy & Security → Accessibility
-→ add `~/.local/bin/local-clipboard`; hidden folders: press Cmd+Shift+. in the file picker).
-It retries every 15s, so no restart is needed after granting.
+macOS first run: grant **two** permissions when prompted (it retries every 15s, no restart needed):
+1. System Settings → Privacy & Security → **Accessibility** → add `~/Applications/LocalClipboard.app`
+2. System Settings → Privacy & Security → **Input Monitoring** → same app
+Without Input Monitoring the hotkey reports active but never fires.
 
 Prefer your OS-native binding instead? Pass `-hotkey ""` and bind the same CLI command via:
 

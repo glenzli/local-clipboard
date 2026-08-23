@@ -76,7 +76,7 @@ func (t *Tray) refresh() {
 	}
 	if t.mHotkey != nil {
 		if t.C.store.HotkeyUp() {
-			t.mHotkey.SetTitle("⌘ hotkey active (ctrl+alt+c)")
+			t.mHotkey.SetTitle("⌘ hotkey active (cmd+option+c)")
 			t.mHotkey.Disable()
 		} else {
 			t.mHotkey.SetTitle("⚠ hotkey waiting for permission")
