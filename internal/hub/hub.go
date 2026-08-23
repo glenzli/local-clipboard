@@ -211,8 +211,8 @@ func (h *Hub) handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	n, err := io.Copy(f, io.LimitReader(r.Body, maxUpload+1))
-	f.Close()
-	if err != nil || n > maxUpload {
+	closeErr := f.Close()
+	if err != nil || closeErr != nil || n > maxUpload {
 		os.Remove(dst)
 		http.Error(w, "upload failed or too large", http.StatusBadRequest)
 		return
@@ -235,7 +235,11 @@ func (h *Hub) handleDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer f.Close()
-	fi, _ := f.Stat()
+	fi, err := f.Stat()
+	if err != nil {
+		http.Error(w, "could not inspect file", http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Length", strconv.FormatInt(fi.Size(), 10))
 	io.Copy(w, f)
@@ -321,24 +325,8 @@ func (h *Hub) readLoop(p *peer) {
 		if err != nil {
 			return
 		}
-		var msg proto.Message
-		if json.Unmarshal(data, &msg) != nil {
-			continue
-		}
-		switch msg.Type {
-		case proto.TypeText:
-			if msg.Content == "" {
-				continue
-			}
-		case proto.TypeImage:
-			if msg.Content == "" {
-				continue
-			}
-		case proto.TypeFile:
-			if msg.FID == "" {
-				continue
-			}
-		default:
+		msg, data, ok := normalizeIncomingMessage(data, p.name)
+		if !ok {
 			continue
 		}
 
@@ -363,6 +351,34 @@ func (h *Hub) readLoop(p *peer) {
 			}
 		}
 	}
+}
+
+func normalizeIncomingMessage(data []byte, source string) (proto.Message, []byte, bool) {
+	var msg proto.Message
+	if json.Unmarshal(data, &msg) != nil {
+		return proto.Message{}, nil, false
+	}
+	switch msg.Type {
+	case proto.TypeText, proto.TypeImage:
+		if msg.Content == "" {
+			return proto.Message{}, nil, false
+		}
+	case proto.TypeFile:
+		if msg.FID == "" {
+			return proto.Message{}, nil, false
+		}
+	default:
+		return proto.Message{}, nil, false
+	}
+
+	// The WebSocket connection owns source attribution. Never forward a
+	// conflicting Source supplied in the message body.
+	msg.Source = source
+	normalized, err := json.Marshal(msg)
+	if err != nil {
+		return proto.Message{}, nil, false
+	}
+	return msg, normalized, true
 }
 
 func (h *Hub) appendHistoryLocked(msg proto.Message, wireSize int64) {

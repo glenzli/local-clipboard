@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -33,6 +34,8 @@ type Client struct {
 	store  *Store
 }
 
+var knownHostsMu sync.Mutex
+
 func New(server, name, token string) *Client {
 	return &Client{server: server, name: name, token: token, store: NewStore()}
 }
@@ -48,29 +51,72 @@ func knownHostsPath() (string, error) {
 }
 
 func (c *Client) verifyFingerprint(instance string) error {
+	knownHostsMu.Lock()
+	defer knownHostsMu.Unlock()
+
 	path, err := knownHostsPath()
 	if err != nil {
 		return err
 	}
-	os.MkdirAll(filepath.Dir(path), 0o700)
-	m := map[string]string{}
-	if b, err := os.ReadFile(path); err == nil {
-		json.Unmarshal(b, &m)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	m, err := loadKnownHosts(path)
+	if err != nil {
+		return err
 	}
 	known, ok := m[c.server]
 	if !ok {
 		m[c.server] = instance
-		b, _ := json.MarshalIndent(m, "", "  ")
-		tmp := path + ".tmp"
-		if err := os.WriteFile(tmp, b, 0o600); err != nil {
-			return err
-		}
-		return os.Rename(tmp, path)
+		return writeKnownHosts(path, m)
 	}
 	if known != instance {
 		return fmt.Errorf("SERVER IDENTITY MISMATCH for %s: expected %s got %s.\nIf you rebuilt the hub intentionally, delete the record:\n  rm %s", c.server, short(known), short(instance), path)
 	}
 	return nil
+}
+
+func loadKnownHosts(path string) (map[string]string, error) {
+	m := map[string]string{}
+	b, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return m, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(b, &m); err != nil {
+		return nil, fmt.Errorf("parse known hosts %s: %w", path, err)
+	}
+	if m == nil {
+		return nil, fmt.Errorf("parse known hosts %s: expected a JSON object", path)
+	}
+	return m, nil
+}
+
+func writeKnownHosts(path string, hosts map[string]string) error {
+	b, err := json.MarshalIndent(hosts, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), "known_hosts-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if err := tmp.Chmod(0o600); err != nil {
+		tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(b); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, path)
 }
 
 func short(s string) string {
@@ -82,11 +128,12 @@ func short(s string) string {
 
 func (c *Client) dialWS() (*websocket.Conn, error) {
 	u := "ws://" + c.server + "/ws?name=" + url.QueryEscape(c.name)
+	header := http.Header{}
 	if c.token != "" {
-		u += "&token=" + url.QueryEscape(c.token)
+		header.Set("X-Token", c.token)
 	}
 	d := websocket.Dialer{HandshakeTimeout: dialTimeout, Proxy: nil}
-	conn, resp, err := d.Dial(u, nil)
+	conn, resp, err := d.Dial(u, header)
 	if err != nil {
 		if resp != nil && resp.StatusCode == 401 {
 			return nil, errors.New("unauthorized: wrong or missing token")
@@ -227,4 +274,3 @@ func SendPayload(server, name, token string, msg *proto.Message) error {
 	conn.SetWriteDeadline(time.Now().Add(writeTimeout))
 	return conn.WriteMessage(websocket.TextMessage, data)
 }
-

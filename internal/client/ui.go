@@ -7,9 +7,13 @@ import (
 	"io"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/g4i/local-clipboard/internal/proto"
 )
@@ -35,7 +39,8 @@ func StartUI(c *Client, port int) error {
 	mux.HandleFunc("/api/send-file", u.handleSendFile)
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
 	log.Printf("[ui] http://%s", addr)
-	return http.ListenAndServe(addr, mux)
+	server := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	return server.ListenAndServe()
 }
 
 func (u *UIServer) handleState(w http.ResponseWriter, r *http.Request) {
@@ -51,7 +56,11 @@ func inboxDir() string {
 func (u *UIServer) acceptOne(fid string) {
 	go func() {
 		dir := inboxDir()
-		os.MkdirAll(dir, 0o755)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			log.Printf("[ui] create inbox: %v", err)
+			u.c.store.SetFIDState(fid, StateFailed)
+			return
+		}
 		u.c.store.SetFIDState(fid, StateReceiving)
 		path, err := DownloadTo(u.c.server, u.c.token, fid, dir, func(done, total int64) {
 			u.c.store.UpdateProgress(fid, done, total)
@@ -68,6 +77,9 @@ func (u *UIServer) acceptOne(fid string) {
 }
 
 func (u *UIServer) handleAccept(w http.ResponseWriter, r *http.Request) {
+	if !requireLocalMutation(w, r) {
+		return
+	}
 	var req struct {
 		FID string `json:"fid"`
 	}
@@ -80,6 +92,9 @@ func (u *UIServer) handleAccept(w http.ResponseWriter, r *http.Request) {
 }
 
 func (u *UIServer) handleAcceptAll(w http.ResponseWriter, r *http.Request) {
+	if !requireLocalMutation(w, r) {
+		return
+	}
 	fids := u.c.store.PendingFIDs()
 	for _, fid := range fids {
 		u.acceptOne(fid)
@@ -89,6 +104,9 @@ func (u *UIServer) handleAcceptAll(w http.ResponseWriter, r *http.Request) {
 }
 
 func (u *UIServer) handleSendClipboard(w http.ResponseWriter, r *http.Request) {
+	if !requireLocalMutation(w, r) {
+		return
+	}
 	var req struct {
 		To string `json:"to"`
 	}
@@ -105,7 +123,13 @@ func (u *UIServer) handleSendClipboard(w http.ResponseWriter, r *http.Request) {
 }
 
 func (u *UIServer) handleSendFile(w http.ResponseWriter, r *http.Request) {
-	r.ParseMultipartForm(64 << 20)
+	if !requireLocalMutation(w, r) {
+		return
+	}
+	if err := r.ParseMultipartForm(64 << 20); err != nil {
+		http.Error(w, "invalid multipart upload: "+err.Error(), http.StatusBadRequest)
+		return
+	}
 	file, header, err := r.FormFile("file")
 	if err != nil {
 		http.Error(w, "missing file field", 400)
@@ -120,9 +144,17 @@ func (u *UIServer) handleSendFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tmpPath := tmp.Name()
-	size, _ := io.Copy(tmp, file)
-	tmp.Close()
 	defer os.Remove(tmpPath)
+	size, copyErr := io.Copy(tmp, file)
+	closeErr := tmp.Close()
+	if copyErr != nil {
+		http.Error(w, copyErr.Error(), http.StatusInternalServerError)
+		return
+	}
+	if closeErr != nil {
+		http.Error(w, closeErr.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	ev := &Event{Dir: "out", Kind: "file", Name: filepath.Base(header.Filename), Size: size, Peer: "hub", State: StateSending}
 	if to != "" {
@@ -151,4 +183,31 @@ func (u *UIServer) handleSendFile(w http.ResponseWriter, r *http.Request) {
 	}
 	u.c.store.SetState(ev, StateDone)
 	fmt.Fprintf(w, `{"ok":true,"fid":%q}`, fid)
+}
+
+func requireLocalMutation(w http.ResponseWriter, r *http.Request) bool {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", http.MethodPost)
+		http.Error(w, "POST required", http.StatusMethodNotAllowed)
+		return false
+	}
+	origin := r.Header.Get("Origin")
+	if origin != "" && !isLoopbackOrigin(origin) {
+		http.Error(w, "cross-origin request denied", http.StatusForbidden)
+		return false
+	}
+	return true
+}
+
+func isLoopbackOrigin(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+		return false
+	}
+	host := u.Hostname()
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
