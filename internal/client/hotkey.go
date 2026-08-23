@@ -81,7 +81,7 @@ func RegisterHotkey(c *Client, spec string) error {
 	go func() {
 		for range hk.Keydown() {
 			go func() {
-				if err := SendCurrentClipboard(c, "", SendEventHooks{}); err != nil {
+				if err := SendCurrentClipboard(c, "", c.StoreHooks()); err != nil {
 					log.Printf("[hotkey] send failed: %v", err)
 				} else {
 					log.Printf("[hotkey] clipboard sent")

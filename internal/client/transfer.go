@@ -128,6 +128,14 @@ type SendEventHooks struct {
 	SetSt    func(ev *Event, state string)
 }
 
+func (c *Client) StoreHooks() SendEventHooks {
+	return SendEventHooks{
+		OnAdd:    func(ev *Event) { c.store.Add(ev) },
+		Progress: func(ev *Event, done, total int64) { c.store.UpdateEvent(ev, done, total) },
+		SetSt:    func(ev *Event, state string) { c.store.SetState(ev, state) },
+	}
+}
+
 func SendCurrentClipboard(c *Client, to string, hooks SendEventHooks) error {
 	add := func(ev *Event) { if hooks.OnAdd != nil { hooks.OnAdd(ev) } }
 	prog := func(ev *Event) progressFunc {
