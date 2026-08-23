@@ -1,6 +1,5 @@
 local-clipboard
 dist/
 *.log
-make.local.mk
 .vscode/
 deploy.env
