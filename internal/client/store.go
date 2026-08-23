@@ -47,10 +47,9 @@ func (s *Store) Add(e *Event) {
 	e.Time = time.Now().UnixMilli()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if e.FID != "" && e.State != StateDone {
+	if e.FID != "" && e.State != StateDone && e.State != StateFailed && e.State != StateReceived {
 		s.pending[e.FID] = e
-	}
-	if e.State == StateDone || e.State == StateFailed {
+	} else if e.FID != "" {
 		delete(s.pending, e.FID)
 	}
 	s.events = append(s.events, e)
@@ -60,11 +59,12 @@ func (s *Store) Add(e *Event) {
 }
 
 const (
-	StateDone     = "done"
-	StateFailed   = "failed"
-	StateOffered  = "offered"
-	StateSending  = "sending"
-	StateReceived = "received"
+	StateDone      = "done"
+	StateFailed    = "failed"
+	StateOffered   = "offered"
+	StateSending   = "sending"
+	StateReceived  = "received"
+	StateReceiving = "receiving"
 )
 
 func (s *Store) Snapshot(events bool) map[string]any {
@@ -115,6 +115,29 @@ func (s *Store) UpdateEvent(e *Event, done, total int64) {
 		e.Pct = int(done * 100 / total)
 		e.Done = done
 	}
+}
+
+func (s *Store) SetFIDState(fid, state string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if e, ok := s.pending[fid]; ok {
+		e.State = state
+		if state == StateDone || state == StateFailed || state == StateReceived {
+			delete(s.pending, fid)
+		}
+	}
+}
+
+func (s *Store) PendingFIDs() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]string, 0, len(s.pending))
+	for fid, e := range s.pending {
+		if e.State == StateOffered {
+			out = append(out, fid)
+		}
+	}
+	return out
 }
 
 func (s *Store) SetState(e *Event, state string) {

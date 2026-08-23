@@ -55,7 +55,9 @@ label.filebtn input { display:none; }
 </div>
 
 <div class="card" id="pendingCard">
-  <h2>待接收文件</h2>
+  <h2 style="display:flex;justify-content:space-between;align-items:center">待接收文件
+    <button id="acceptAllBtn" onclick="acceptAll()" style="display:none;padding:4px 12px;font-size:12px">全部接收</button>
+  </h2>
   <div id="pending"></div>
 </div>
 
@@ -73,18 +75,19 @@ async function refresh(){
   try {
     const s = await (await fetch('/api/state')).json();
     $('dot').className = 'dot' + (s.connected ? ' up':'');
-    const pend = (s.events||[]).filter(e=>e.state==='offered'||e.state==='sending'||e.state==='failed');
-    const done = (s.events||[]).filter(e=>!(e.state==='offered'));
+    const pend = (s.events||[]).filter(e=>['offered','sending','receiving','failed'].includes(e.state));
+    const done = (s.events||[]).filter(e=>!['offered','sending','receiving','failed'].includes(e.state));
     let ph = '';
     for (const e of pend) {
-      ph += `<div class="row"><span class="badge">${e.state==='offered'?'待接收':''}${e.state==='sending'?'传输中':''}${e.state==='failed'?'失败':''}</span>
+      ph += `<div class="row"><span class="badge">${badgeText(e)}</span>
         <span class="grow">${e.name||'(剪贴板)'}<div class="sub">来自 ${e.peer} · ${fmtSize(e.size)}</div></span>`;
       if (e.state==='offered') ph += `<button onclick="accept('${e.fid}')">接收</button>`;
-      if (e.state==='sending') ph += `<div class="pbar"><div style="width:${e.pct||0}%"></div></div><span class="sub">${e.pct||0}%</span>`;
+      if (e.state==='sending'||e.state==='receiving') ph += `<div class="pbar"><div style="width:${e.pct||0}%"></div></div><span class="sub">${e.pct||0}%</span>`;
       if (e.state==='failed') ph += `<button onclick="retry('${e.fid}')">重试</button>`;
       ph += '</div>';
     }
     $('pending').innerHTML = ph || '<div class="empty">没有进行中的传输</div>';
+    $('acceptAllBtn').style.display = (s.events||[]).some(e=>e.state==='offered') ? '' : 'none';
     let eh = '';
     for (const e of (s.events||[]).slice(0,30)) {
       eh += `<div class="row"><span class="sub" style="width:70px">${fmtTime(e.time)}</span>
@@ -95,11 +98,17 @@ async function refresh(){
     $('events').innerHTML = eh || '<div class="empty">暂无记录</div>';
   } catch(e) { $('meta').textContent = 'UI 离线'; }
 }
+function badgeText(e){
+  return {offered:'待接收',sending:'发送中',receiving:'接收中',failed:'失败'}[e.state]||e.state;
+}
 function stateText(e){
-  return {done:'完成',received:'已保存',failed:'失败',sending:'发送中',offered:'待接收'}[e.state]||e.state;
+  return {done:'完成',received:'已保存',failed:'失败',sending:'发送中',offered:'待接收',receiving:'接收中'}[e.state]||e.state;
 }
 async function accept(fid){
   await fetch('/api/accept',{method:'POST',body:JSON.stringify({fid})});
+}
+async function acceptAll(){
+  await fetch('/api/accept-all',{method:'POST'});
 }
 async function sendClip(){
   const to = $('to').value.trim();

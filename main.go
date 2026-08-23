@@ -65,24 +65,9 @@ func main() {
 			os.Exit(1)
 		}
 		mustServer(server)
-		msg, hint, err := client.DetectAndBuildClipboardMessage()
-		die(err)
-		if hint {
-			fmt.Fprintln(os.Stderr, "clipboard holds very large text; save it to a file and use send-file")
-			os.Exit(1)
-		}
-		if *server == "" && len(fs.Args()) > 0 {
-			*server = fs.Args()[0]
-		}
-		mustServer(server)
-		if viaDaemon, derr := client.SendClipboardViaDaemon(*to); viaDaemon {
-			die(derr)
-			fmt.Printf("sent %s (%s) to %s via daemon\n", msg.Type, humanBytes(msg.Size), targetDesc(*to))
-			return
-		}
-		msg.Target = *to
-		die(client.SendPayload(*server, *name, *token, msg))
-		fmt.Printf("sent %s (%s) to %s\n", msg.Type, humanBytes(msg.Size), targetDesc(*to))
+		c := client.New(*server, *name, *token)
+		die(client.SendCurrentClipboard(c, *to, client.SendEventHooks{}))
+		fmt.Printf("sent clipboard to %s\n", targetDesc(*to))
 
 	case "send-text":
 		fs := flag.NewFlagSet("send-text", flag.ExitOnError)
