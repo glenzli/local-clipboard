@@ -36,7 +36,7 @@ func main() {
 		token := fs.String("token", "", "shared token")
 		uiPort := fs.Int("ui-port", client.DefaultUIPort, "local UI port (0 = off)")
 		trayOn := fs.Bool("tray", true, "show tray icon (disable on headless linux)")
-		hotkeySpec := fs.String("hotkey", "cmd+option+c", "global hotkey to send clipboard (empty = off)")
+		hotkeySpec := fs.String("hotkey", client.DefaultHotkey, "global hotkey to copy and send (empty = off)")
 		fs.Parse(os.Args[2:])
 		mustServer(server)
 		c := client.New(*server, *name, *token)
@@ -56,7 +56,7 @@ func main() {
 			}()
 		}
 		if *trayOn {
-			client.RunTray(c, *uiPort)
+			client.RunTray(c, *uiPort, *hotkeySpec)
 		} else {
 			select {}
 		}

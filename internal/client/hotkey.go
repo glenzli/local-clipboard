@@ -77,14 +77,18 @@ func RegisterHotkey(c *Client, spec string) error {
 	}
 	c.store.SetHotkey(true)
 	keepRegistered = append(keepRegistered, hk)
-	log.Printf("[hotkey] %s registered — press anywhere to send clipboard", strings.ToLower(spec))
+	log.Printf("[hotkey] %s registered", strings.ToLower(spec))
 	go func() {
-		for range hk.Keydown() {
+		// Run after the shortcut key is released. This avoids reading the
+		// clipboard before the explicit remote-copy gesture can synthesize the
+		// application's normal Copy command.
+		for range hk.Keyup() {
 			go func() {
-				if err := SendCurrentClipboard(c, "", c.StoreHooks()); err != nil {
+				if err := SendClipboardFromHotkey(c, "", c.StoreHooks()); err != nil {
 					log.Printf("[hotkey] send failed: %v", err)
+					Notify("远程复制失败：" + err.Error())
 				} else {
-					log.Printf("[hotkey] clipboard sent")
+					log.Printf("[hotkey] fresh clipboard sent")
 				}
 			}()
 		}

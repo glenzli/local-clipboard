@@ -20,21 +20,54 @@ import (
 )
 
 const (
-	historyCap  = 200
-	fileTTL     = 24 * time.Hour
-	cleanPeriod = time.Hour
-	writeWait   = 10 * time.Second
-	pingPeriod  = 30 * time.Second
-	readWait    = 60 * time.Second
-	maxMsgSize  = 32 << 20
-	maxUpload   = 1 << 30
-	sendBufSize = 32
+	historyCap      = 200
+	historyBytesCap = 64 << 20
+	fileTTL         = 24 * time.Hour
+	cleanPeriod     = time.Hour
+	writeWait       = 10 * time.Second
+	pingPeriod      = 30 * time.Second
+	readWait        = 60 * time.Second
+	maxMsgSize      = 32 << 20
+	maxUpload       = 1 << 30
+	sendBufSize     = 32
 )
 
 type peer struct {
-	conn *websocket.Conn
-	name string
-	send chan []byte
+	conn      *websocket.Conn
+	name      string
+	send      chan []byte
+	done      chan struct{}
+	closeOnce sync.Once
+}
+
+func (p *peer) close() {
+	p.closeOnce.Do(func() {
+		close(p.done)
+		if p.conn != nil {
+			p.conn.Close()
+		}
+	})
+}
+
+func (p *peer) enqueue(data []byte) bool {
+	select {
+	case <-p.done:
+		return false
+	default:
+	}
+	select {
+	case <-p.done:
+		return false
+	case p.send <- data:
+		return true
+	default:
+		return false
+	}
+}
+
+type historyEntry struct {
+	message  proto.Message
+	wireSize int64
 }
 
 type Hub struct {
@@ -43,9 +76,10 @@ type Hub struct {
 	instID   string
 	storeDir string
 
-	mu      sync.Mutex
-	peers   map[*peer]struct{}
-	history []*proto.Message
+	mu           sync.Mutex
+	peers        map[*peer]struct{}
+	history      []historyEntry
+	historyBytes int64
 }
 
 func New(token string) (*Hub, error) {
@@ -53,7 +87,9 @@ func New(token string) (*Hub, error) {
 	if err != nil {
 		return nil, err
 	}
-	os.MkdirAll(filepath.Join(root, "files"), 0o755)
+	if err := os.MkdirAll(filepath.Join(root, "files"), 0o755); err != nil {
+		return nil, err
+	}
 	id, err := loadOrCreateInstance(filepath.Join(root, "instance_id"))
 	if err != nil {
 		return nil, err
@@ -86,7 +122,9 @@ func loadOrCreateInstance(path string) (string, error) {
 		return string(b), nil
 	}
 	b := make([]byte, 16)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
 	id := hex.EncodeToString(b)
 	return id, os.WriteFile(path, []byte(id), 0o600)
 }
@@ -143,9 +181,9 @@ func (h *Hub) handleHistory(w http.ResponseWriter, r *http.Request) {
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	out := make([]*proto.Message, len(h.history))
-	for i, m := range h.history {
-		out[len(h.history)-1-i] = m
+	out := make([]proto.Message, len(h.history))
+	for i, entry := range h.history {
+		out[len(h.history)-1-i] = entry.message
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(out)
@@ -234,7 +272,12 @@ func (h *Hub) handleWS(w http.ResponseWriter, r *http.Request) {
 	}
 	conn.SetReadLimit(maxMsgSize)
 
-	p := &peer{conn: conn, name: r.URL.Query().Get("name"), send: make(chan []byte, sendBufSize)}
+	p := &peer{
+		conn: conn,
+		name: r.URL.Query().Get("name"),
+		send: make(chan []byte, sendBufSize),
+		done: make(chan struct{}),
+	}
 	if p.name == "" {
 		p.name = "unknown"
 	}
@@ -269,8 +312,7 @@ func (h *Hub) readLoop(p *peer) {
 		h.mu.Lock()
 		delete(h.peers, p)
 		h.mu.Unlock()
-		p.conn.Close()
-		close(p.send)
+		p.close()
 		log.Printf("[hub] %s disconnected", p.name)
 	}()
 
@@ -301,10 +343,7 @@ func (h *Hub) readLoop(p *peer) {
 		}
 
 		h.mu.Lock()
-		h.history = append(h.history, &msg)
-		if len(h.history) > historyCap {
-			h.history = h.history[len(h.history)-historyCap:]
-		}
+		h.appendHistoryLocked(msg, int64(len(data)))
 		targets := make([]*peer, 0, len(h.peers))
 		for q := range h.peers {
 			if q == p {
@@ -319,24 +358,33 @@ func (h *Hub) readLoop(p *peer) {
 
 		log.Printf("[hub] %s -> %d peers [%s]: %s", p.name, len(targets), msg.Type, describe(msg))
 		for _, q := range targets {
-			select {
-			case q.send <- data:
-			default:
-				log.Printf("[hub] send buffer full for %s, dropping", q.name)
+			if !q.enqueue(data) {
+				log.Printf("[hub] peer unavailable or send buffer full for %s, dropping", q.name)
 			}
 		}
 	}
 }
 
+func (h *Hub) appendHistoryLocked(msg proto.Message, wireSize int64) {
+	h.history = append(h.history, historyEntry{message: msg, wireSize: wireSize})
+	h.historyBytes += wireSize
+	for len(h.history) > 1 && (len(h.history) > historyCap || h.historyBytes > historyBytesCap) {
+		h.historyBytes -= h.history[0].wireSize
+		h.history = h.history[1:]
+	}
+}
+
 func (h *Hub) writeLoop(p *peer) {
+	defer p.close()
 	ticker := time.NewTicker(pingPeriod)
 	defer ticker.Stop()
 	for {
 		select {
+		case <-p.done:
+			return
 		case data, ok := <-p.send:
 			p.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if !ok {
-				p.conn.WriteMessage(websocket.CloseMessage, nil)
 				return
 			}
 			if err := p.conn.WriteMessage(websocket.TextMessage, data); err != nil {
@@ -366,7 +414,7 @@ func describe(m proto.Message) string {
 }
 
 func humanBytes(n int64) string {
-	const kb, mb = 1<<10, 1<<20
+	const kb, mb = 1 << 10, 1 << 20
 	switch {
 	case n >= mb:
 		return itoa64(n/mb) + "." + itoa64((n%mb)/(1<<17)) + "MB"

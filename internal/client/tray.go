@@ -11,6 +11,7 @@ import (
 type Tray struct {
 	C        *Client
 	UIPort   int
+	Hotkey   string
 	mStatus  *systray.MenuItem
 	mPending *systray.MenuItem
 	mRecvAll *systray.MenuItem
@@ -75,8 +76,11 @@ func (t *Tray) refresh() {
 		t.mStatus.SetTitle("○ offline — reconnecting…")
 	}
 	if t.mHotkey != nil {
-		if t.C.store.HotkeyUp() {
-			t.mHotkey.SetTitle("⌘ hotkey active (cmd+option+c)")
+		if t.Hotkey == "" {
+			t.mHotkey.SetTitle("hotkey disabled")
+			t.mHotkey.Disable()
+		} else if t.C.store.HotkeyUp() {
+			t.mHotkey.SetTitle("hotkey active (" + t.Hotkey + ")")
 			t.mHotkey.Disable()
 		} else {
 			t.mHotkey.SetTitle("⚠ hotkey waiting for permission")
@@ -111,7 +115,7 @@ func (t *Tray) post(path string) {
 
 func (t *Tray) OnExit() {}
 
-func RunTray(c *Client, uiPort int) {
-	t := &Tray{C: c, UIPort: uiPort}
+func RunTray(c *Client, uiPort int, hotkey string) {
+	t := &Tray{C: c, UIPort: uiPort, Hotkey: hotkey}
 	systray.Run(t.OnReady, t.OnExit)
 }

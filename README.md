@@ -77,8 +77,15 @@ Without `-server` they route through the local daemon (progress shows in the UI)
 
 ## Hotkeys
 
-The daemon registers a **global hotkey in-process**: `Ctrl+Alt+C` sends the current clipboard
-(macOS maps Option to Alt — same muscle memory on every platform). Change it with `-hotkey ctrl+shift+d`, disable with `-hotkey ""`.
+The daemon registers a **global hotkey in-process**: `Cmd+Option+C` on macOS and
+`Ctrl+Alt+C` on Windows/Linux. On macOS and Windows, this is an explicit
+**copy-and-send** gesture: it asks the frontmost app to copy, waits for the
+clipboard to change, then sends the fresh files, image, or text. If Copy does
+not produce a new clipboard value, it fails closed instead of sending stale
+content. Linux keeps the existing send-current-clipboard behavior because
+there is no portable Copy injection across X11 and Wayland.
+
+Change the binding with `-hotkey ctrl+shift+d`; disable it with `-hotkey ""`.
 
 macOS first run: grant **two** permissions when prompted (it retries every 15s, no restart needed):
 1. System Settings → Privacy & Security → **Accessibility** → add `~/Applications/LocalClipboard.app`
