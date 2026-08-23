@@ -15,6 +15,6 @@ deploy: dist-all
 	test -n "$(NAS_HOST)" || { echo "set NAS_HOST, e.g.: make deploy NAS_HOST=user@nas"; exit 1; }
 	test -n "$(NAS_DIR)"  || { echo "set NAS_DIR,  e.g.: make deploy NAS_DIR=/path/to/local-clipboard"; exit 1; }
 	scp -O dist/$(BINARY)-linux-amd64 "$(NAS_HOST):$(NAS_DIR)/local-clipboard-linux-amd64"
-	ssh "$(NAS_HOST)" "cd '$(NAS_DIR)' && docker compose up -d --build"
+	ssh "$(NAS_HOST)" "cd '$(NAS_DIR)' && sudo docker compose up -d --build"
 
 .PHONY: build dist-all deploy
