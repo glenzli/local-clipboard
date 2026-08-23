@@ -79,17 +79,15 @@ Without `-server` they route through the local daemon (progress shows in the UI)
 
 Recommended combo everywhere: `Ctrl+Alt+C` (macOS maps Option to Alt, same muscle memory).
 
-**macOS — skhd**
+**macOS — Shortcuts.app (built-in, no extra software)**
 
-```bash
-brew install koekeishiya/formulae/skhd
-echo "ctrl + alt - c : $HOME/.local/bin/local-clipboard send-clipboard" >> ~/.config/skhd/skhdrc
-skhd --start-service
-# grant Accessibility permission when prompted
-```
+1. Open Shortcuts.app -> new shortcut
+2. Add action "Run Shell Script", input: `/Users/YOURNAME/.local/bin/local-clipboard send-clipboard`
+   (absolute path; the shortcut environment has a minimal PATH)
+3. In the shortcut's detail panel (right side) -> "Add Keyboard Shortcut" -> press Ctrl+Option+C
+4. Run it once to grant permission prompts
 
-Or use Raycast/Alfred: hotkey -> run command `/Users/you/.local/bin/local-clipboard send-clipboard`.
-Or Shortcuts.app: new shortcut -> Run Shell Script -> assign hotkey (slower to fire).
+Alternatives: Raycast/Alfred hotkey running the same command (faster response), or [skhd](https://github.com/koekeishiya/skhd) if you already use it (`deploy/macos/skhdrc.example`).
 
 **Windows — AutoHotkey v2**
 
