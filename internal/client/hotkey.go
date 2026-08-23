@@ -53,6 +53,10 @@ var keyMap = map[string]hotkey.Key{
 	"space": hotkey.KeySpace,
 }
 
+// keepRegistered pins registered hotkeys so the garbage collector cannot
+// reclaim them while the C event tap still holds a cgo handle to them.
+var keepRegistered []*hotkey.Hotkey
+
 func RegisterHotkey(c *Client, spec string) error {
 	mods, key, err := ParseHotkey(spec)
 	if err != nil {
@@ -72,6 +76,7 @@ func RegisterHotkey(c *Client, spec string) error {
 		time.Sleep(15 * time.Second)
 	}
 	c.store.SetHotkey(true)
+	keepRegistered = append(keepRegistered, hk)
 	log.Printf("[hotkey] %s registered — press anywhere to send clipboard", strings.ToLower(spec))
 	go func() {
 		for range hk.Keydown() {
