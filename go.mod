@@ -7,5 +7,6 @@ require (
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
+	golang.design/x/hotkey v0.6.1 // indirect
 	golang.org/x/sys v0.15.0 // indirect
 )
