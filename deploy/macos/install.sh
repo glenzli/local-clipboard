@@ -16,13 +16,42 @@ case $(uname -m) in
   x86_64) echo "Intel Macs: run 'make build' on this machine to produce local-clipboard-darwin-amd64 first"; exit 1 ;;
   *) echo "unsupported arch"; exit 1 ;;
 esac
-BIN="$HOME/.local/bin/local-clipboard"
-mkdir -p "$(dirname "$BIN")"
-cp "$(dirname "$0")/$BINFILE" "$BIN"
-chmod +x "$BIN"
-PLIST="$HOME/Library/LaunchAgents/com.glenzli.local-clipboard.plist"
+
+APP="$HOME/Applications/LocalClipboard.app"
+mkdir -p "$APP/Contents/MacOS"
+cp "$(dirname "$0")/$BINFILE" "$APP/Contents/MacOS/local-clipboard"
+chmod +x "$APP/Contents/MacOS/local-clipboard"
+
+cat > "$APP/Contents/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>com.glenzli.local-clipboard</string>
+    <key>CFBundleName</key>
+    <string>LocalClipboard</string>
+    <key>CFBundleExecutable</key>
+    <string>local-clipboard</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>LSUIElement</key>
+    <true/>
+</dict>
+</plist>
+PLIST
+codesign --force --sign - "$APP" 2>/dev/null || true
+
+BIN="$APP/Contents/MacOS/local-clipboard"
+PLIST_FILE="$HOME/Library/LaunchAgents/com.glenzli.local-clipboard.plist"
 sed -e "s|__BIN__|$BIN|g" -e "s|__SERVER__|$SERVER|g" -e "s|__TOKEN__|$TOKEN|g" -e "s|__NAME__|$NAME|g" \
-  "$(dirname "$0")/com.glenzli.local-clipboard.plist.template" > "$PLIST"
-launchctl unload "$PLIST" 2>/dev/null || true
-launchctl load "$PLIST"
-echo "installed and started. logs: tail -f /tmp/local-clipboard.log"
+  "$(dirname "$0")/com.glenzli.local-clipboard.plist.template" > "$PLIST_FILE"
+launchctl unload "$PLIST_FILE" 2>/dev/null || true
+launchctl load "$PLIST_FILE"
+echo "installed as $APP and started."
+echo ""
+echo "ONE-TIME STEP for the global hotkey:"
+echo "  System Settings -> Privacy & Security -> Accessibility -> add/check:"
+echo "  $APP"
+echo "  (it retries automatically; no restart needed after granting)"
+echo "logs: tail -f /tmp/local-clipboard.log"
