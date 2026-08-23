@@ -14,6 +14,8 @@ Local Clipboard 是一个仅在局域网内使用的文本、图片和文件传�
                             │
                          文件中转
                          保留 24 小时
+                            │
+                     手机浏览器显式收发
 ```
 
 - macOS 上按 `Cmd+Option+C` 会先复制当前选择，再发送刚写入剪贴板的内容。
@@ -21,6 +23,7 @@ Local Clipboard 是一个仅在局域网内使用的文本、图片和文件传�
 - 文件（包括 Finder 多选文件）会作为待接收项目出现；接收方收到通知后，
   在本地控制台中确认下载。
 - 每个客户端的控制台仅监听 <http://127.0.0.1:9101>。
+- 手机可以直接打开 NAS Hub 页面，显式发送或接收文本、图片和文件。
 
 ### 交互模型
 
@@ -183,6 +186,23 @@ $HOME/Applications/LocalClipboard.app/Contents/MacOS/local-clipboard send-clipbo
 
 所有修改状态的接口只接受 `POST`，并拒绝来自非回环地址的浏览器请求。
 
+### 手机收发页面
+
+手机与 NAS 位于同一可信网络时，打开 `http://nas-ip:9100/`。输入一次 Hub 的共享令牌
+后，Hub 会为当前浏览器建立 HttpOnly 会话；共享令牌不会写入 URL 或浏览器存储。
+
+- **发送**：选择在线目标设备，粘贴文本，或选择照片和文件上传。文本会进入桌面端
+  剪贴板，文件会成为桌面端的待接收项目。
+- **接收**：页面列出发给此手机设备名或广播的近期内容。文本需要点击复制，图片需要
+  查看并保存，文件通过 Hub 下载。
+- 手机设备名保存在当前浏览器中；桌面端可以将它填入目标设备名进行定向发送，留空
+  则按现有规则广播。
+- 收件箱复用 Hub 的有界内存历史，Hub 重启后会清空；中转文件仍按 24 小时规则删除。
+
+页面支持中文和英文。移动浏览器在普通 HTTP 下可能不允许网页直接读写系统剪贴板；
+此时页面会保留可选择文本，并提示使用系统的长按粘贴或复制。通过可信 HTTPS 反向代理
+访问 Hub 可以获得更完整的剪贴板按钮体验。
+
 ### CLI
 
 ```text
@@ -220,6 +240,8 @@ serve -addr :9100 [-token s]
 
 - 共享令牌用于授权 Hub 的 HTTP 和 WebSocket 请求。客户端通过 `X-Token` 请求头
   发送令牌，不会把令牌放在 URL 中。
+- 手机页面用共享令牌换取随机、HttpOnly、SameSite 会话 cookie；cookie 不包含共享
+  令牌，Hub 重启后会话失效，需要重新连接。
 - 第一次成功连接时，客户端会固定 Hub 实例 ID。后续身份变化会被拒绝，直到用户
   主动删除本地 known-hosts 记录。这是 TOFU，不是证书机构。
 - Hub 使用明文 HTTP 和 WebSocket，**不提供加密**。不要把 `9100` 端口暴露到公网；
@@ -263,7 +285,7 @@ X11 安装 `xclip`，Wayland 安装 `wl-clipboard`，并确认 systemd 用户服
 - 单个中转文件上限为 1 GiB。
 - 当前 Docker 和 Linux 客户端产物面向 amd64。
 - 当前 macOS 安装器面向 Apple Silicon。
-- 暂不支持 iOS/iPadOS，因为系统不允许后台剪贴板访问；未来移动端需要采用拉取式流程。
+- 手机页面采用显式收发，不监视后台剪贴板，也不提供后台自动接收或推送通知。
 
 [返回顶部](#local-clipboard)
 
@@ -281,6 +303,8 @@ device A ── WebSocket ──▶ NAS hub ◀── WebSocket ── device B
                               │
                          file relay
                          24-hour TTL
+                              │
+                   explicit mobile web transfer
 ```
 
 - `Cmd+Option+C` on macOS copies the current selection and sends the fresh
@@ -289,6 +313,8 @@ device A ── WebSocket ──▶ NAS hub ◀── WebSocket ── device B
 - Files, including a multi-selection in Finder, arrive as pending offers. The
   receiver gets a notification and accepts them from the local Console.
 - Each client exposes its Console only on <http://127.0.0.1:9101>.
+- Phones can open the NAS hub page directly for explicit text, image, and file
+  sending and receiving.
 
 ### Interaction model
 
@@ -459,6 +485,28 @@ then saves an explicit `中文 / English` selection in the current browser.
 State-changing endpoints accept only `POST` and reject browser requests from
 non-loopback origins.
 
+### Mobile transfer page
+
+When the phone and NAS are on the same trusted network, open
+`http://nas-ip:9100/`. Enter the hub's shared token once; the hub exchanges it
+for an HttpOnly browser session, so the shared token is not stored in the URL
+or browser storage.
+
+- **Send:** choose an online target, paste text, or select photos and files.
+  Text lands in the desktop clipboard; files become pending offers.
+- **Receive:** the page lists recent items addressed to this phone's device
+  name or broadcast by another device. Copy text explicitly, view and save
+  images, or download files from the hub.
+- The phone's device name is stored in the browser. Desktop senders can enter
+  that name for targeted delivery, or leave the target empty to broadcast.
+- The inbox reuses the hub's bounded in-memory history and is cleared when the
+  hub restarts. Relayed files still expire after 24 hours.
+
+The page supports Chinese and English. Mobile browsers may deny direct system
+clipboard access over plain HTTP; the page then keeps the text selectable and
+prompts for the native long-press Paste or Copy action. A trusted HTTPS reverse
+proxy provides the complete clipboard-button experience.
+
 ### CLI
 
 ```text
@@ -497,6 +545,9 @@ must match the receiver's device name.
 
 - The shared token authorizes hub HTTP and WebSocket requests. Clients send it
   in the `X-Token` header rather than in URLs.
+- The mobile page exchanges the shared token for a random HttpOnly, SameSite
+  session cookie. The cookie does not contain the shared token and is invalid
+  after a hub restart.
 - The first successful connection pins the hub instance ID. Later identity
   changes are rejected until the local known-hosts record is deliberately
   removed. This is TOFU, not a certificate authority.
@@ -546,7 +597,7 @@ user service inherits the correct display/session environment.
 - Individual relayed files are limited to 1 GiB.
 - The supplied Docker and Linux client artifacts target amd64.
 - The supplied macOS installer targets Apple Silicon.
-- iOS and iPadOS are not supported because background clipboard access is not
-  available; a future mobile client would need a pull-style workflow.
+- Mobile transfer is explicit: there is no background clipboard monitoring,
+  automatic background receive, or push notification support.
 
 [Back to top](#local-clipboard)

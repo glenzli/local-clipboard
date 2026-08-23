@@ -7,10 +7,13 @@ import (
 	"encoding/json"
 	"io"
 	"log"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -80,6 +83,9 @@ type Hub struct {
 	peers        map[*peer]struct{}
 	history      []historyEntry
 	historyBytes int64
+
+	mobileMu       sync.Mutex
+	mobileSessions map[string]time.Time
 }
 
 func New(token string) (*Hub, error) {
@@ -95,11 +101,12 @@ func New(token string) (*Hub, error) {
 		return nil, err
 	}
 	h := &Hub{
-		upgrader: websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }},
-		token:    token,
-		instID:   id,
-		storeDir: filepath.Join(root, "files"),
-		peers:    make(map[*peer]struct{}),
+		upgrader:       websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }},
+		token:          token,
+		instID:         id,
+		storeDir:       filepath.Join(root, "files"),
+		peers:          make(map[*peer]struct{}),
+		mobileSessions: make(map[string]time.Time),
 	}
 	go h.cleanLoop()
 	log.Printf("[hub] instance %s", short(id))
@@ -140,6 +147,9 @@ func (h *Hub) authorized(r *http.Request) bool {
 	if h.token == "" {
 		return true
 	}
+	if h.mobileSessionAuthorized(r) {
+		return true
+	}
 	t := r.URL.Query().Get("token")
 	if t == "" {
 		t = r.Header.Get("X-Token")
@@ -152,7 +162,14 @@ func (h *Hub) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("/upload", h.handleUpload)
 	mux.HandleFunc("/download", h.handleDownload)
 	mux.HandleFunc("/history", h.handleHistory)
-	mux.HandleFunc("/", h.handleStatus)
+	mux.HandleFunc("/api/status", h.handleStatus)
+	mux.HandleFunc("/api/session", h.handleMobileSession)
+	mux.HandleFunc("/api/inbox", h.handleMobileInbox)
+	mux.HandleFunc("/api/item", h.handleMobileItem)
+	mux.HandleFunc("/api/send-text", h.handleMobileText)
+	mux.HandleFunc("/api/send-file", h.handleMobileFile)
+	mux.HandleFunc("/mobile/", h.handleMobileAsset)
+	mux.HandleFunc("/", h.handleRoot)
 }
 
 func (h *Hub) handleStatus(w http.ResponseWriter, r *http.Request) {
@@ -166,6 +183,7 @@ func (h *Hub) handleStatus(w http.ResponseWriter, r *http.Request) {
 	for p := range h.peers {
 		names = append(names, p.name)
 	}
+	sort.Strings(names)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
 		"instance":    h.instID,
@@ -196,6 +214,10 @@ func (h *Hub) handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method != http.MethodPost {
 		http.Error(w, "POST required", http.StatusMethodNotAllowed)
+		return
+	}
+	if !sameOrigin(r) {
+		http.Error(w, "cross-origin upload denied", http.StatusForbidden)
 		return
 	}
 	name := r.URL.Query().Get("name")
@@ -242,6 +264,11 @@ func (h *Hub) handleDownload(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Length", strconv.FormatInt(fi.Size(), 10))
+	name := fid
+	if i := strings.Index(fid, "-"); i >= 0 && len(fid) > i+1 {
+		name = fid[i+1:]
+	}
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": name}))
 	io.Copy(w, f)
 	log.Printf("[hub] served %s", fid)
 }
@@ -330,27 +357,40 @@ func (h *Hub) readLoop(p *peer) {
 			continue
 		}
 
-		h.mu.Lock()
-		h.appendHistoryLocked(msg, int64(len(data)))
-		targets := make([]*peer, 0, len(h.peers))
-		for q := range h.peers {
-			if q == p {
-				continue
-			}
-			if msg.Target != "" && q.name != msg.Target {
-				continue
-			}
-			targets = append(targets, q)
-		}
-		h.mu.Unlock()
-
-		log.Printf("[hub] %s -> %d peers [%s]: %s", p.name, len(targets), msg.Type, describe(msg))
-		for _, q := range targets {
-			if !q.enqueue(data) {
-				log.Printf("[hub] peer unavailable or send buffer full for %s, dropping", q.name)
-			}
-		}
+		h.forwardMessage(msg, data, p)
 	}
+}
+
+type deliveryResult struct {
+	matched   int
+	delivered int
+}
+
+func (h *Hub) forwardMessage(msg proto.Message, data []byte, exclude *peer) deliveryResult {
+	h.mu.Lock()
+	h.appendHistoryLocked(msg, int64(len(data)))
+	targets := make([]*peer, 0, len(h.peers))
+	for q := range h.peers {
+		if q == exclude {
+			continue
+		}
+		if msg.Target != "" && q.name != msg.Target {
+			continue
+		}
+		targets = append(targets, q)
+	}
+	h.mu.Unlock()
+
+	result := deliveryResult{matched: len(targets)}
+	log.Printf("[hub] %s -> %d peers [%s]: %s", msg.Source, len(targets), msg.Type, describe(msg))
+	for _, q := range targets {
+		if q.enqueue(data) {
+			result.delivered++
+			continue
+		}
+		log.Printf("[hub] peer unavailable or send buffer full for %s, dropping", q.name)
+	}
+	return result
 }
 
 func normalizeIncomingMessage(data []byte, source string) (proto.Message, []byte, bool) {

@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#f3f6fa">
+  <title>Local Clipboard Mobile</title>
+  <link rel="icon" href="/mobile/app-icon.png">
+  <link rel="stylesheet" href="/mobile/app.css">
+</head>
+<body>
+<main class="shell">
+  <header class="topbar">
+    <div class="brand">
+      <img class="brand-icon" src="/mobile/app-icon.png" alt="">
+      <div>
+        <h1>Local Clipboard</h1>
+        <p class="eyebrow" data-i18n="mobileHub"></p>
+      </div>
+    </div>
+    <nav class="locale-switch" aria-label="Language">
+      <button type="button" data-locale="zh">中文</button>
+      <span aria-hidden="true">/</span>
+      <button type="button" data-locale="en">English</button>
+    </nav>
+  </header>
+
+  <section class="card auth-card" id="authCard" hidden>
+    <div class="section-heading">
+      <div>
+        <h2 data-i18n="connectHub"></h2>
+        <p data-i18n="tokenHelp"></p>
+      </div>
+    </div>
+    <form id="authForm" class="auth-form">
+      <label class="field grow">
+        <span data-i18n="sharedToken"></span>
+        <input id="tokenInput" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" data-i18n-placeholder="tokenPlaceholder">
+      </label>
+      <button class="primary" type="submit" data-i18n="connect"></button>
+    </form>
+    <p class="form-status" id="authStatus" role="status"></p>
+  </section>
+
+  <div id="app" hidden>
+    <section class="device-strip card compact">
+      <label class="field grow">
+        <span data-i18n="thisDevice"></span>
+        <input id="deviceName" type="text" maxlength="64" autocomplete="nickname">
+      </label>
+      <div class="hub-state">
+        <span class="dot" id="hubDot"></span>
+        <div><strong id="hubState"></strong><small id="onlineSummary"></small></div>
+      </div>
+      <button class="quiet" type="button" id="logoutBtn" data-i18n="disconnect"></button>
+    </section>
+
+    <nav class="tabs" aria-label="Transfer mode">
+      <button class="active" type="button" data-tab="send" data-i18n="send"></button>
+      <button type="button" data-tab="receive"><span data-i18n="receive"></span><span class="count" id="inboxCount">0</span></button>
+    </nav>
+
+    <section id="sendPanel" class="panel">
+      <section class="card">
+        <div class="section-heading">
+          <div><h2 data-i18n="sendText"></h2><p data-i18n="sendTextHelp"></p></div>
+        </div>
+        <label class="field">
+          <span data-i18n="targetDevice"></span>
+          <select id="textTarget"></select>
+        </label>
+        <label class="field">
+          <span data-i18n="textContent"></span>
+          <textarea id="textInput" rows="6" data-i18n-placeholder="textPlaceholder"></textarea>
+        </label>
+        <div class="actions">
+          <button class="secondary" type="button" id="pasteBtn" data-i18n="paste"></button>
+          <button class="primary" type="button" id="sendTextBtn" data-i18n="sendTextAction"></button>
+        </div>
+        <p class="form-status" id="textStatus" role="status"></p>
+      </section>
+
+      <section class="card">
+        <div class="section-heading">
+          <div><h2 data-i18n="sendFiles"></h2><p data-i18n="sendFilesHelp"></p></div>
+        </div>
+        <label class="field">
+          <span data-i18n="targetDevice"></span>
+          <select id="fileTarget"></select>
+        </label>
+        <label class="drop-zone" id="dropZone">
+          <input id="fileInput" type="file" multiple>
+          <span class="drop-icon" aria-hidden="true">＋</span>
+          <strong data-i18n="chooseFiles"></strong>
+          <small data-i18n="fileLimit"></small>
+        </label>
+        <div id="selectedFiles" class="selected-files"></div>
+        <button class="primary full" type="button" id="sendFilesBtn" disabled data-i18n="uploadAndSend"></button>
+        <div class="progress" id="uploadProgress" hidden><div></div></div>
+        <p class="form-status" id="fileStatus" role="status"></p>
+      </section>
+    </section>
+
+    <section id="receivePanel" class="panel" hidden>
+      <section class="card">
+        <div class="section-heading inbox-heading">
+          <div><h2 data-i18n="inbox"></h2><p data-i18n="inboxHelp"></p></div>
+          <button class="quiet" type="button" id="refreshBtn" data-i18n="refresh"></button>
+        </div>
+        <div id="inbox" class="inbox-list"></div>
+        <p class="form-status" id="inboxStatus" role="status"></p>
+      </section>
+    </section>
+  </div>
+</main>
+
+<dialog id="itemDialog">
+  <div class="dialog-head">
+    <h2 id="dialogTitle"></h2>
+    <button class="icon-button" type="button" id="closeDialog" aria-label="Close">×</button>
+  </div>
+  <textarea id="dialogText" readonly hidden></textarea>
+  <img id="dialogImage" alt="" hidden>
+  <div class="actions dialog-actions">
+    <button class="primary" type="button" id="dialogCopy" hidden data-i18n="copy"></button>
+    <a class="button primary" id="dialogDownload" hidden data-i18n="download"></a>
+  </div>
+</dialog>
+
+<div class="toast" id="toast" role="status" hidden></div>
+<script src="/mobile/app.js"></script>
+</body>
+</html>
