@@ -302,6 +302,10 @@ X11 安装 `xclip`，Wayland 安装 `wl-clipboard`，并确认 systemd 用户服
 - 当前 macOS 安装器面向 Apple Silicon。
 - 手机页面采用显式收发，不监视后台剪贴板，也不提供后台自动接收或推送通知。
 
+### 许可证
+
+本项目采用 [MIT License](LICENSE)。
+
 [返回顶部](#local-clipboard)
 
 ---
@@ -637,5 +641,9 @@ user service inherits the correct display/session environment.
 - The supplied macOS installer targets Apple Silicon.
 - Mobile transfer is explicit: there is no background clipboard monitoring,
   automatic background receive, or push notification support.
+
+### License
+
+This project is licensed under the [MIT License](LICENSE).
 
 [Back to top](#local-clipboard)
