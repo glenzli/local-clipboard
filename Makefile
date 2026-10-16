@@ -15,13 +15,18 @@ else ifeq ($(UNAME_S),Linux)
 endif
 
 # darwin keeps cgo enabled: the tray icon (systray) needs it.
+BUILD_LDFLAGS=-s -w
+ifeq ($(shell go env GOOS),windows)
+  BUILD_LDFLAGS+=-H windowsgui
+endif
+
 build:
-	go build -ldflags "-s -w" -o dist/$(BINARY)-$(shell go env GOOS)-$(shell go env GOARCH) .
+	go build -ldflags "$(BUILD_LDFLAGS)" -o dist/$(BINARY)-$(shell go env GOOS)-$(shell go env GOARCH)$(if $(filter windows,$(shell go env GOOS)),.exe,) .
 
 dist-all:
 	CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -ldflags "-s -w" -o dist/$(BINARY)-linux-amd64 .
 	GOOS=darwin  GOARCH=arm64 go build -ldflags "-s -w" -o dist/$(BINARY)-darwin-arm64 .
-	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "-s -w" -o dist/$(BINARY)-windows-amd64.exe .
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "-s -w -H windowsgui" -o dist/$(BINARY)-windows-amd64.exe .
 
 deploy: dist-all
 	@test -n "$(NAS_HOST)" || { echo "missing NAS_HOST: cp deploy.env.example deploy.env"; exit 1; }

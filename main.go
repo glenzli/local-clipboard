@@ -31,6 +31,7 @@ func main() {
 
 	case "run":
 		fs := flag.NewFlagSet("run", flag.ExitOnError)
+		config := fs.String("config", "", "saved Windows client configuration")
 		server := fs.String("server", "", "hub address, e.g. nas:9100")
 		name := fs.String("name", defaultName(), "device name")
 		token := fs.String("token", os.Getenv("LOCALCLIP_TOKEN"), "shared token (or LOCALCLIP_TOKEN env)")
@@ -38,6 +39,10 @@ func main() {
 		trayOn := fs.Bool("tray", true, "show tray icon (disable on headless linux)")
 		hotkeySpec := fs.String("hotkey", client.DefaultHotkey, "global hotkey to copy and send (empty = off)")
 		fs.Parse(os.Args[2:])
+		if *config != "" {
+			die(startRunLog(*config))
+			die(applyRunConfig(*config, fs, server, name, token))
+		}
 		mustServer(server)
 		c := client.New(*server, *name, *token)
 		if *uiPort > 0 {

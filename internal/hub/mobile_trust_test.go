@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -42,7 +43,9 @@ func TestTrustedMobileDeviceSurvivesRestartAndCanBeForgotten(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := info.Mode().Perm(); got != 0o600 {
+	// Windows reports writable files as 0666; Unix permission bits do not
+	// represent its access control lists.
+	if got := info.Mode().Perm(); runtime.GOOS != "windows" && got != 0o600 {
 		t.Fatalf("trusted-device store mode = %o, want 600", got)
 	}
 

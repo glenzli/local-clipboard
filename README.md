@@ -125,6 +125,18 @@ $env:LOCALCLIP_TOKEN = "<shared-token>"
 
 安装器注册当前用户的登录启动项。共享令牌使用当前 Windows 用户的 DPAPI 加密后保存在
 本地，不会写入启动命令。
+登录时直接启动托盘客户端，不需要保持命令行或 PowerShell 窗口。再次运行安装器可以
+保留已有服务器和令牌并升级客户端。日志位于
+`%LOCALAPPDATA%\local-clipboard\local-clipboard.log`。
+
+在 Windows 上自行构建无控制台窗口的版本：
+
+```powershell
+go build -ldflags "-s -w -H windowsgui" -o dist/local-clipboard-windows-amd64.exe .
+```
+
+图片读写仍使用系统 PowerShell，按需在后台短暂运行。PNG 格式保留透明度，同时提供
+兼容旧应用的白底位图；复制截图和浏览器图片时都可以直接发送。
 
 ### 使用
 
@@ -333,6 +345,19 @@ $env:LOCALCLIP_TOKEN = "<shared-token>"
 The installer registers a current-user logon startup entry. The shared token is
 stored locally using DPAPI for the current Windows user and is not written into
 the startup command.
+Logon starts the tray client directly, with no terminal or persistent PowerShell
+process. Re-run the installer to upgrade using the saved server and token. Logs
+are written to `%LOCALAPPDATA%\local-clipboard\local-clipboard.log`.
+
+To build a Windows binary without a console window:
+
+```powershell
+go build -ldflags "-s -w -H windowsgui" -o dist/local-clipboard-windows-amd64.exe .
+```
+
+Image operations still use system PowerShell briefly in the background. PNG
+preserves transparency, with a white-backed bitmap for older applications.
+Screenshots and browser images can both be sent from the clipboard.
 
 ### Usage
 
